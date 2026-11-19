@@ -168,6 +168,7 @@ FOREIGN_FEEDS = {
     "The Guardian": "https://www.theguardian.com/football/rss",
     "ESPN": "https://www.espn.com/espn/rss/soccer/news",
 }
+FOREIGN_ENABLED = False  # зарубежные новости ОТКЛЮЧЕНЫ (плохой перевод, ссылки на чужие сайты). True — включить обратно
 FOREIGN_PER_RUN = 2  # сколько зарубежных новостей присылать за один раз (каждые 30 минут)
 
 def tarjima(t):
@@ -227,7 +228,8 @@ def news_text(n):
 
 def offer_news(s):
     _offer(s, FEEDS, "news_init", NEWS_PER_RUN, foreign=False)
-    _offer(s, FOREIGN_FEEDS, "foreign_init", FOREIGN_PER_RUN, foreign=True)
+    if FOREIGN_ENABLED:
+        _offer(s, FOREIGN_FEEDS, "foreign_init", FOREIGN_PER_RUN, foreign=True)
 
 def _offer(s, feeds, init_key, per_run, foreign):
     seen = s.setdefault("news_seen", [])
