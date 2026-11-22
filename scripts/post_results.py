@@ -15,6 +15,7 @@ GROUP_ID = os.environ.get("GROUP_ID", "").strip()  # masalan @uzb_fut_fan_club
 
 TASHKENT = ZoneInfo("Asia/Tashkent")
 ESPN = "https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/scoreboard"
+ESPN_SUMMARY = "https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/summary"
 SENT_FILE = "sent.json"
 CARDS_FILE = "cards.json"
 HIGHLIGHTS_FILE = "highlights.json"
@@ -534,20 +535,8 @@ def _ball(d, cx, cy, r=12):
     d.polygon(pts, fill=(30, 30, 30, 255))
 
 
-def make_result_card(label, m):
-    """Tugagan o'yin: fon — ikki jamoa qarama-qarshiligi (jamoa ranglari + katta logotiplar),
-    hisob, gollar (daqiqa bilan), qizil kartochkalar va o'yin qahramoni."""
-    events = m.get("events") or []
-    hero = match_hero(events, m["hg"], m["ag"]) if events else None
-    rows = max(sum(1 for e in events if e["side"] == "home"), sum(1 for e in events if e["side"] == "away"))
-    rows = min(rows, 8)
-    row_h = 46
-    top_zone = 640
-    panel_h = (70 + rows * row_h + 20) if events else 0
-    hero_h = 130 if hero else 0
-    foot_h = 170
-    H = top_zone + (panel_h + 30 if events else 0) + (hero_h + 30 if hero else 0) + foot_h
-
+def _clash_bg(m, H, top_zone):
+    """Fon — ikki jamoa qarama-qarshiligi: jamoa ranglari, diagonal chiziq, katta xira logotiplar."""
     lc = team_color(m.get("home_color", (None, None)), (30, 90, 160))
     rc = team_color(m.get("away_color", (None, None)), (160, 50, 50))
     if sum(abs(a - b) for a, b in zip(lc, rc)) < 90:  # ranglar o'xshash bo'lsa
@@ -581,6 +570,25 @@ def make_result_card(label, m):
     d = ImageDraw.Draw(img, "RGBA")
     # urush chizig'i
     d.line([(610, 0), (610 - 140 * top_zone / H, top_zone)], fill=(255, 255, 255, 80), width=5)
+    return img
+
+
+def make_result_card(label, m):
+    """Tugagan o'yin: fon — ikki jamoa qarama-qarshiligi (jamoa ranglari + katta logotiplar),
+    hisob, gollar (daqiqa bilan), qizil kartochkalar va o'yin qahramoni."""
+    events = m.get("events") or []
+    hero = match_hero(events, m["hg"], m["ag"]) if events else None
+    rows = max(sum(1 for e in events if e["side"] == "home"), sum(1 for e in events if e["side"] == "away"))
+    rows = min(rows, 8)
+    row_h = 46
+    top_zone = 640
+    panel_h = (70 + rows * row_h + 20) if events else 0
+    hero_h = 130 if hero else 0
+    foot_h = 170
+    H = top_zone + (panel_h + 30 if events else 0) + (hero_h + 30 if hero else 0) + foot_h
+
+    img = _clash_bg(m, H, top_zone)
+    d = ImageDraw.Draw(img, "RGBA")
 
     # sarlavha
     d.ellipse((55, 38, 125, 108), fill=(10, 72, 112, 150), outline=(70, 185, 240, 230), width=3)
@@ -760,6 +768,223 @@ def post_finished(now, sent, cards):
             sent.add(f"espn-{m['id']}")
 
 
+# ---------- TARKIBLAR (starting XI) ----------
+# Faqat shu klublar ishtirokidagi (va barcha Chempionlar Ligasi) o'yinlar uchun tarkib yuboriladi.
+# Ro'yxatni o'zgartirish mumkin — nomlar ESPN dagi inglizcha nomlar, kichik harflarda, aksentsiz.
+TOP_CLUBS = {
+    "real madrid", "barcelona", "atletico madrid", "manchester city", "manchester united", "liverpool",
+    "arsenal", "chelsea", "tottenham hotspur", "newcastle united", "bayern munich", "borussia dortmund",
+    "bayer leverkusen", "paris saint-germain", "juventus", "inter milan", "ac milan", "napoli", "as roma",
+    "al nassr", "al hilal", "galatasaray", "fenerbahce", "benfica", "porto", "sporting cp", "ajax",
+}
+LINEUP_BEFORE_MIN = 100  # o'yindan necha daqiqa oldin tarkibni qidirishni boshlaymiz
+LINEUP_AFTER_MIN = 20    # o'yin boshlangandan keyin ham shuncha daqiqa urinamiz
+POS_RANK = {"G": 0, "D": 1, "M": 2, "F": 3, "A": 3}
+
+
+def _norm(t):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFKD", (t or "").lower()) if not unicodedata.combining(c))
+
+
+def is_top(m, code):
+    return code == "uefa.champions" or _norm(m["home"]) in TOP_CLUBS or _norm(m["away"]) in TOP_CLUBS
+
+
+def basic_event(ev):
+    comp = ev["competitions"][0]
+    teams = {c["homeAway"]: c for c in comp["competitors"]}
+    home, away = teams["home"], teams["away"]
+    link = next((l["href"] for l in ev.get("links", []) if "summary" in l.get("rel", []) and l.get("href")), None)
+    return {
+        "id": ev["id"], "state": comp["status"]["type"].get("state"),
+        "dt": datetime.fromisoformat(ev["date"].replace("Z", "+00:00")).astimezone(TASHKENT),
+        "link": link or f"https://www.espn.com/soccer/match/_/gameId/{ev['id']}",
+        "home": home["team"]["displayName"], "away": away["team"]["displayName"],
+        "home_logo": home["team"].get("logo"), "away_logo": away["team"].get("logo"),
+        "home_color": (home["team"].get("color"), home["team"].get("alternateColor")),
+        "away_color": (away["team"].get("color"), away["team"].get("alternateColor")),
+    }
+
+
+def _coach_name(c):
+    if isinstance(c, list):
+        c = c[0] if c else None
+    if isinstance(c, dict):
+        return c.get("displayName") or " ".join(x for x in (c.get("firstName"), c.get("lastName")) if x)
+    return c or ""
+
+
+def get_lineups(code, event_id):
+    """{'home': {...}, 'away': {...}} yoki None (tarkib hali e'lon qilinmagan)."""
+    try:
+        r = requests.get(ESPN_SUMMARY.format(code=code), params={"event": event_id}, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        print("SUMMARY ERROR", event_id, e)
+        return None
+    out = {}
+    for t in data.get("rosters", []) or []:
+        side = t.get("homeAway")
+        if side not in ("home", "away"):
+            continue
+        players = []
+        for p in t.get("roster", []) or []:
+            a = p.get("athlete") or {}
+            players.append({"name": a.get("shortName") or a.get("displayName") or "",
+                            "num": str(p.get("jersey", "") or ""),
+                            "pos": ((p.get("position") or {}).get("abbreviation") or "")[:1].upper(),
+                            "place": p.get("formationPlace"), "starter": bool(p.get("starter"))})
+        starters = [p for p in players if p["starter"]]
+        if len(starters) < 11:
+            return None
+        starters.sort(key=lambda p: (int(p["place"]) if str(p["place"]).isdigit() else 99, POS_RANK.get(p["pos"], 9)))
+        form = t.get("formation")
+        out[side] = {"formation": form if isinstance(form, str) else (form or {}).get("name", ""),
+                     "starters": starters[:11], "bench": [p for p in players if not p["starter"]],
+                     "coach": _coach_name(t.get("coach"))}
+    return out if len(out) == 2 else None
+
+
+def _wrap(d, text, font, width, max_lines=3):
+    lines, cur = [], ""
+    for w in text.split(", "):
+        t = w if not cur else cur + ", " + w
+        if d.textlength(t, font=font) <= width:
+            cur = t
+        else:
+            lines.append(cur + ",")
+            cur = w
+    if cur:
+        lines.append(cur)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1].rstrip(",") + " ..."
+    return lines
+
+
+def make_lineup_card(label, m, lu):
+    """Ikkala jamoaning boshlang'ich tarkibi: fon — jamoalar qarama-qarshiligi."""
+    tmp = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    bf = F(22)
+    bench = {sd: _wrap(tmp, ", ".join(p["name"] for p in lu[sd]["bench"]), bf, 430) for sd in ("home", "away")}
+    has_bench = any(bench.values())
+    bench_h = (56 + max(len(bench["home"]), len(bench["away"])) * 30) if has_bench else 0
+    has_coach = bool(lu["home"].get("coach") or lu["away"].get("coach"))
+    row_h, top_zone, foot_h = 54, 570, 170
+    panel_h = 70 + 11 * row_h + (52 if has_coach else 20)
+    H = top_zone + panel_h + 30 + (bench_h + 30 if has_bench else 0) + foot_h
+
+    img = _clash_bg(m, H, top_zone)
+    d = ImageDraw.Draw(img, "RGBA")
+    lc = team_color(m.get("home_color", (None, None)), (30, 90, 160))
+    rc = team_color(m.get("away_color", (None, None)), (160, 50, 50))
+
+    d.ellipse((55, 38, 125, 108), fill=(10, 72, 112, 150), outline=(70, 185, 240, 230), width=3)
+    d.text((90, 73), "F", font=F(38, True), fill=(255, 255, 255, 255), anchor="mm")
+    d.text((148, 56), "FUTBOL OLAMI", font=F(38, True), fill=(245, 250, 255, 255), anchor="lm")
+    d.text((148, 94), "Futbol haqida hammasi!", font=F(21), fill=(150, 215, 250, 255), anchor="lm")
+    img.alpha_composite(make_flag(LEAGUE_CODE.get(label)), (55, 140))
+    d = ImageDraw.Draw(img, "RGBA")
+    d.text((130, 160), league_title(label), font=F(30, True), fill=(250, 252, 255, 255), anchor="lm")
+    dt = m["dt"]
+    d.text((W - 55, 160), f"{dt.strftime('%d.%m.%Y')} · {DAYS[dt.weekday()]}", font=F(24),
+           fill=(200, 225, 240, 255), anchor="rm")
+    d.text((540, 228), "BOSHLANG'ICH TARKIBLAR", font=F(36, True), fill=(255, 255, 255, 255), anchor="mm")
+
+    for url, cx in ((m["home_logo"], 170), (m["away_logo"], 910)):
+        lg = get_logo(url, 150)
+        d.ellipse((cx - 82, 288, cx + 82, 452), fill=(5, 16, 29, 150), outline=(255, 255, 255, 70), width=3)
+        if lg:
+            img.alpha_composite(lg, (int(cx - lg.width / 2), int(370 - lg.height / 2)))
+    d = ImageDraw.Draw(img, "RGBA")
+    d.text((540, 355), "VS", font=F(80, True), fill=(255, 255, 255, 255), anchor="mm")
+    d.text((540, 432), dt.strftime("%H:%M"), font=F(36, True), fill=(255, 215, 90, 255), anchor="mm")
+    for key, cx in (("home", 170), ("away", 910)):
+        nm, nf = fit_text(d, m[key], 330, 34, 22)
+        d.text((cx, 485), nm, font=nf, fill=(255, 255, 255, 255), anchor="mm")
+        if lu[key].get("formation"):
+            d.text((cx, 530), lu[key]["formation"], font=F(30, True), fill=(255, 215, 90, 255), anchor="mm")
+
+    y = top_zone
+    d.rounded_rectangle((45, y, W - 45, y + panel_h), 20, fill=(4, 12, 22, 185), outline=(255, 255, 255, 60), width=2)
+    for side, x0, col in (("home", 70, lc), ("away", 575, rc)):
+        badge = tuple(min(255, int(v * 0.6 + 100)) for v in col)
+        for i, p in enumerate(lu[side]["starters"]):
+            cy = y + 45 + i * row_h + 27
+            d.ellipse((x0, cy - 20, x0 + 40, cy + 20), fill=badge + (255,), outline=(255, 255, 255, 220), width=2)
+            d.text((x0 + 20, cy), p["num"] or "·", font=F(21, True), fill=(10, 20, 30, 255), anchor="mm")
+            name, f = _fit_name(d, p["name"] or "—", 370, 30)
+            d.text((x0 + 56, cy), name, font=f, fill=(250, 252, 255, 255), anchor="lm")
+        if lu[side].get("coach"):
+            cn, cf = _fit_name(d, "Murabbiy: " + lu[side]["coach"], 420, 24)
+            d.text((x0, y + 45 + 11 * row_h + 28), cn, font=cf, fill=(160, 220, 255, 255), anchor="lm")
+    d.line((540, y + 30, 540, y + panel_h - 30), fill=(255, 255, 255, 40), width=2)
+    y += panel_h + 30
+    if has_bench:
+        d.rounded_rectangle((45, y, W - 45, y + bench_h), 20, fill=(4, 12, 22, 150), outline=(255, 255, 255, 50), width=2)
+        d.text((70, y + 28), "ZAXIRADAGILAR", font=F(22, True), fill=(160, 220, 255, 255), anchor="lm")
+        for side, x0 in (("home", 70), ("away", 575)):
+            for j, ln in enumerate(bench[side]):
+                d.text((x0, y + 64 + j * 30), ln, font=bf, fill=(225, 238, 248, 255), anchor="lm")
+        y += bench_h + 30
+
+    fy = H - foot_h + 20
+    d.line((60, fy, W - 60, fy), fill=(255, 255, 255, 90), width=2)
+    _, handle = channel_info()
+    d.text((70, fy + 40), "Futbol bizni birlashtiradi!", font=F(33, True), fill=(238, 248, 255, 255), anchor="lm")
+    tag = f"Telegram: {handle}" if handle else "Futbol olami  •  Futbol haqida hammasi!"
+    d.text((70, fy + 98), tag, font=F(32, True), fill=(110, 205, 255, 255), anchor="lm")
+    return img.convert("RGB")
+
+
+def lineup_caption(label, m):
+    e = html.escape
+    link, _ = channel_info()
+    return (f"📋 <b>Boshlang'ich tarkiblar</b>\n"
+            f"⚽ {e(m['home'], quote=False)} — {e(m['away'], quote=False)}\n"
+            f"🏆 {e(league_title(label), quote=False)} · ⏰ {m['dt']:%H:%M}\n\n"
+            f'🔗 <a href="{e(m["link"])}">ESPN</a>\n\n'
+            + (f'<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "<b>FUTBOL OLAMI</b>"))
+
+
+def post_lineups(now, sent):
+    """Top klublar o'yinlari: tarkib e'lon qilinishi bilan (odatda ~1 soat oldin) — bitta rasm."""
+    dates = [(now + timedelta(days=i)).strftime("%Y-%m-%d") for i in (-1, 0, 1)]
+    cands, seen = [], set()
+    for code, label in LEAGUES.items():
+        for dstr in dates:
+            for ev in get_events(code, dstr):
+                try:
+                    m = basic_event(ev)
+                except Exception as e:
+                    print("LINEUP PARSE ERROR", ev.get("id"), e)
+                    continue
+                if m["id"] in seen:
+                    continue
+                seen.add(m["id"])
+                mins = (m["dt"] - now).total_seconds() / 60
+                if not TEST_MODE and (m["state"] == "post" or not (-LINEUP_AFTER_MIN <= mins <= LINEUP_BEFORE_MIN)):
+                    continue
+                if not is_top(m, code) or (f"lineup-{m['id']}" in sent and not TEST_MODE):
+                    continue
+                cands.append((label, code, m))
+    print("LINEUP CANDIDATES:", len(cands))
+    cands.sort(key=lambda x: x[2]["dt"])
+    for label, code, m in cands:
+        lu = get_lineups(code, m["id"])
+        if not lu:
+            print("LINEUP not published yet:", m["home"], "-", m["away"])
+            continue
+        if send_photo(make_lineup_card(label, m, lu), lineup_caption(label, m)):
+            if not TEST_MODE:
+                sent.add(f"lineup-{m['id']}")
+            time.sleep(3.5)
+        if TEST_MODE:
+            break
+
+
 def post_upcoming(now, sent):
     """Программа на сегодня — один раз в день, начиная с 08:00 по Ташкенту."""
     key = f"upcoming-{now:%Y-%m-%d}"
@@ -794,6 +1019,7 @@ def main():
     cards = load_cards()
     post_finished(now, sent, cards)
     post_upcoming(now, sent)
+    post_lineups(now, sent)
     if not TEST_MODE:
         update_cards(cards)
         save_sent(sent)
