@@ -40,6 +40,7 @@ LEAGUES = {
     "uefa.europa.conf": "UEFA — KONFERENSIYALAR LIGASI",
     "afc.champions": "AFC — OSIYO CHEMPIONLAR LIGASI",
     "afc.cup": "AFC — OSIYO CHEMPIONLAR LIGASI 2",
+    "usa.1": "AMERIKA — MLS",
 }
 
 MONTHS = {1: "YANVAR", 2: "FEVRAL", 3: "MART", 4: "APREL", 5: "MAY", 6: "IYUN",
@@ -57,7 +58,7 @@ SHORT = {
     "Bayer Leverkusen": "Leverkusen", "Eintracht Frankfurt": "Frankfurt",
     "Atlético Madrid": "Atlético", "Brighton & Hove Albion": "Brighton",
     "AFC Bournemouth": "Bournemouth",
-    "Pakhtakor Tashkent": "Pakhtakor", "Navbahor Namangan": "Navbahor", "Lokomotiv Tashkent": "Lokomotiv",
+    "Pakhtakor Tashkent": "Pakhtakor", "Inter Miami CF": "Inter Miami", "Navbahor Namangan": "Navbahor", "Lokomotiv Tashkent": "Lokomotiv",
 }
 
 logo_cache = {}
@@ -271,6 +272,7 @@ LEAGUE_STYLE = {
     "ksa.1": ((14, 72, 52), (55, 205, 145)),
     "afc.champions": ((8, 64, 56), (50, 200, 150)),
     "afc.cup": ((72, 40, 18), (240, 150, 70)),
+    "usa.1": ((72, 22, 52), (245, 135, 185)),
 }
 DEFAULT_STYLE = ((20, 32, 100), (115, 145, 255))
 
@@ -339,6 +341,14 @@ def make_flag(code):
         d.rectangle((0, 0, w, h), fill=(255, 255, 255))
         d.rectangle((w * 0.42, 0, w * 0.58, h), fill=(206, 17, 36))
         d.rectangle((0, h * 0.4, w, h * 0.6), fill=(206, 17, 36))
+    elif code == "usa.1":  # AQSH: chiziqlar + ko'k burchak
+        for i in range(7):
+            d.rectangle((0, round(h * i / 7), w, round(h * (i + 1) / 7)), fill=(178, 34, 52) if i % 2 == 0 else (255, 255, 255))
+        d.rectangle((0, 0, round(w * 0.42), round(h * 4 / 7)), fill=(60, 59, 110))
+        for ix in range(4):
+            for iy in range(3):
+                cx, cy = w * (0.08 + ix * 0.09), h * (0.1 + iy * 0.15)
+                d.ellipse((cx - 2 * k, cy - 2 * k, cx + 2 * k, cy + 2 * k), fill=(255, 255, 255))
     elif code and code.startswith("afc"):  # Osiyo: yashil fon, oq doira
         d.rectangle((0, 0, w, h), fill=(0, 122, 80))
         r = h * 0.3
@@ -360,7 +370,7 @@ def make_flag(code):
 
 
 PRIORITY = ["uefa.champions", "afc.champions", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1",
-            "uefa.europa", "uefa.europa.conf", "afc.cup", "ksa.1", "tur.1", "por.1", "ned.1"]
+            "uefa.europa", "uefa.europa.conf", "afc.cup", "usa.1", "ksa.1", "tur.1", "por.1", "ned.1"]
 MAX_ROWS = 24  # bitta rasmga sig'adigan maksimal o'yinlar soni
 
 _channel = {}
@@ -703,7 +713,7 @@ def make_result_card(label, m, live=None):
 
 
 def league_title(label):
-    return label.title().replace("Uefa", "UEFA").replace("Afc", "AFC")
+    return label.title().replace("Uefa", "UEFA").replace("Afc", "AFC").replace("Mls", "MLS")
 
 
 def load_cards():
@@ -784,7 +794,7 @@ def post_finished(now, sent, cards):
         for d in dates:
             for ev in get_events(code, d):
                 m = parse_event(ev)
-                if m and m["id"] not in seen and afc_ok(code, m):
+                if m and m["id"] not in seen and league_ok(code, m):
                     seen.add(m["id"])
                     finished.append((label, m))
     finished.sort(key=lambda x: x[1]["dt"])
@@ -840,17 +850,19 @@ def _name_forms(*names):
     return out
 
 
-def afc_ok(code, m):
-    """Osiyo turnirlari (AFC): faqat O'zbekiston klublari va Al Nassr ishtirokidagi o'yinlar."""
-    if not code.startswith("afc."):
-        return True
+def league_ok(code, m):
+    """Cheklangan turnirlar: AFC — faqat O'zbekiston klublari va Al Nassr; MLS — faqat Inter Miami (Messi)."""
     forms = _name_forms(m["home"], m["away"])
-    return any(k in n for n in forms for k in UZ_CLUBS + ("al nassr",))
+    if code.startswith("afc."):
+        return any(k in n for n in forms for k in UZ_CLUBS + ("al nassr",))
+    if code == "usa.1":
+        return any("inter miami" in n for n in forms)
+    return True
 
 
 def is_top(m, code):
-    if code.startswith("afc."):
-        return afc_ok(code, m)
+    if code.startswith("afc.") or code == "usa.1":
+        return league_ok(code, m)
     forms = _name_forms(m["home"], m["away"])
     return (code == "uefa.champions" or any(n in TOP_CLUBS for n in forms)
             or any(k in n for n in forms for k in UZ_CLUBS))
@@ -1065,7 +1077,7 @@ def post_upcoming(now, sent):
     for code, label in LEAGUES.items():
         for ev in get_events(code, today):
             m = parse_event(ev, upcoming=True)
-            if m and m["id"] not in seen and afc_ok(code, m):
+            if m and m["id"] not in seen and league_ok(code, m):
                 seen.add(m["id"])
                 items.append((label, m))
     items.sort(key=lambda x: x[1]["dt"])
