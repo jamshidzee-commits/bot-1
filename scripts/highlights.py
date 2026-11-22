@@ -1,4 +1,4 @@
-import os, json, html, hashlib, re, requests
+import os, json, html, hashlib, re, unicodedata, requests
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta
@@ -27,6 +27,7 @@ def load():
 def save(s):
     s["offered"] = dict(list(s["offered"].items())[-800:])
     s["tries"] = dict(list(s.get("tries", {}).items())[-500:])
+    s["videos"] = dict(list(s.get("videos", {}).items())[-800:])
     json.dump(s, open(STATE, "w", encoding="utf-8"), ensure_ascii=False)
 
 def tg(method, **data):
@@ -67,33 +68,105 @@ def finished_matches():
 OFFICIAL_CHANNELS = {
     "UCyGa1YEx9ST66rYrJTGIKOw": ("UEFA", ["uefa.champions", "uefa.europa"]),
 }
-MAX_TRIES = 4  # сколько раз искать обзор для одного матча (бережём лимит YouTube)
+MAX_TRIES = 12  # сколько раз искать обзор для одного матча (каждые 30 мин ~ 6 часов; поиск дешёвый)
+
+# Rasmiy liga kanallari: ID ni bot o'zi handle bo'yicha topadi va kanal nomini tekshiradi
+# (nomi mos kelmasa — o'tkazib yuboradi, noto'g'ri kanaldan video olmaydi).
+# Формат: код лиги: (слово, которое должно быть в названии канала, [варианты @handle])
+LEAGUE_HANDLES = {
+    "eng.1": ("premier league", ["premierleague"]),
+    "esp.1": ("laliga", ["LaLiga"]),
+    "ita.1": ("serie a", ["SerieA"]),
+    "ger.1": ("bundesliga", ["bundesliga"]),
+    "fra.1": ("ligue 1", ["ligue1ubereats", "Ligue1McDonalds", "Ligue1"]),
+}
+# Adminga tugmali taklif (eski xatti-harakat) faqat shu ligalar uchun; qolganlarda faqat havola eslab qolinadi
+DM_CODES = {c for _, cs in OFFICIAL_CHANNELS.values() for c in cs}
 
 def short(name):
     stop = {"fc", "cf", "afc", "club", "united", "city", "real", "de"}
     words = [w for w in name.lower().replace("-", " ").split() if w not in stop and len(w) > 2]
     return words[0] if words else name.lower()
 
-def find_video(m):
-    """Ищет обзор только на официальных каналах; название должно содержать ОБЕ команды,
-    а ролик должен быть опубликован после конца матча."""
-    after = m["end"] - timedelta(hours=1)
-    for ch_id, (_, codes) in OFFICIAL_CHANNELS.items():
-        if m["code"] not in codes:
-            continue
+def norm(t):
+    return "".join(c for c in unicodedata.normalize("NFKD", (t or "").lower()) if not unicodedata.combining(c))
+
+ALIASES = {
+    "manchester city": ["man city", "manchester city"], "manchester united": ["man utd", "man united", "manchester united"],
+    "tottenham hotspur": ["tottenham", "spurs"], "newcastle united": ["newcastle"], "west ham united": ["west ham"],
+    "wolverhampton wanderers": ["wolves", "wolverhampton"], "nottingham forest": ["nottingham forest", "nott'm forest", "forest"],
+    "brighton & hove albion": ["brighton"], "leeds united": ["leeds"], "leicester city": ["leicester"],
+    "real madrid": ["real madrid"], "atletico madrid": ["atletico"], "athletic club": ["athletic"],
+    "ac milan": ["milan"], "inter milan": ["inter"], "as roma": ["roma"],
+    "paris saint-germain": ["psg", "paris saint", "paris sg"], "as monaco": ["monaco"],
+    "olympique marseille": ["marseille"], "olympique lyonnais": ["lyon"],
+    "bayern munich": ["bayern"], "borussia dortmund": ["dortmund"], "bayer leverkusen": ["leverkusen"],
+    "borussia monchengladbach": ["gladbach", "monchengladbach"], "eintracht frankfurt": ["frankfurt"], "rb leipzig": ["leipzig"],
+}
+SKIP_WORDS = ("preview", "press conference", "reaction", "interview", "team news", "predict", "training", "trailer")
+
+def team_keys(name):
+    n = norm(name)
+    return ALIASES.get(n) or [n, norm(short(name))]
+
+_uploads = {}
+
+def uploads(ch_id):
+    """Последние 50 видео канала (1 единица квоты, вместо дорогого поиска за 100)."""
+    if ch_id not in _uploads:
         try:
-            r = requests.get("https://www.googleapis.com/youtube/v3/search", params={
-                "key": YT_KEY, "part": "snippet", "type": "video", "maxResults": 10,
-                "channelId": ch_id, "order": "date",
-                "q": f"{m['home']} {m['away']}",
-                "publishedAfter": after.strftime("%Y-%m-%dT%H:%M:%SZ")}, timeout=30).json()
+            r = requests.get("https://www.googleapis.com/youtube/v3/playlistItems", params={
+                "key": YT_KEY, "part": "snippet", "playlistId": "UU" + ch_id[2:], "maxResults": 50}, timeout=30).json()
+            _uploads[ch_id] = [(it["snippet"]["title"], it["snippet"]["publishedAt"], it["snippet"]["resourceId"]["videoId"])
+                               for it in r.get("items", [])]
+            print("YT UPLOADS", ch_id, len(_uploads[ch_id]))
         except Exception as e:
-            print("YOUTUBE ERROR", m["home"], m["away"], e)
-            continue
-        for it in r.get("items", []):
-            title = it["snippet"]["title"].lower()
-            if short(m["home"]) in title and short(m["away"]) in title:
-                return f"https://www.youtube.com/watch?v={it['id']['videoId']}"
+            print("YOUTUBE ERROR", ch_id, e)
+            _uploads[ch_id] = []
+    return _uploads[ch_id]
+
+def resolve_channels(s):
+    found = s.setdefault("channels", {})
+    for code, (need, handles) in LEAGUE_HANDLES.items():
+        for h in handles:
+            if code in found:
+                break
+            try:
+                r = requests.get("https://www.googleapis.com/youtube/v3/channels",
+                                 params={"key": YT_KEY, "part": "snippet", "forHandle": "@" + h}, timeout=30).json()
+            except Exception as e:
+                print("YT CHANNEL ERROR", h, e)
+                continue
+            for it in r.get("items", []):
+                print("YT CHANNEL", h, "->", it["id"], it["snippet"]["title"])
+                if need in it["snippet"]["title"].lower():
+                    found[code] = it["id"]
+                    break
+
+def channels_for(s, code):
+    ids = [cid for cid, (_, codes) in OFFICIAL_CHANNELS.items() if code in codes]
+    if s.get("channels", {}).get(code):
+        ids.append(s["channels"][code])
+    return ids
+
+def find_video(m, s):
+    """Ищет обзор только на официальных каналах: в названии обе команды (с учётом сокращений),
+    ролик опубликован после конца матча, это не превью/пресс-конференция."""
+    after = m["end"] - timedelta(hours=1)
+    hk, ak = team_keys(m["home"]), team_keys(m["away"])
+    for ch_id in channels_for(s, m["code"]):
+        for title, pub, vid in uploads(ch_id):
+            try:
+                when = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            t = norm(title)
+            if when < after or any(w in t for w in SKIP_WORDS):
+                continue
+            if not ("highlight" in t or re.search(r"\d\s*[-–:]\s*\d", t)):
+                continue
+            if any(k in t for k in hk) and any(k in t for k in ak):
+                return f"https://www.youtube.com/watch?v={vid}"
     return None
 
 def text(m, url):
@@ -267,22 +340,27 @@ def _offer(s, feeds, init_key, per_run, foreign):
 
 def offer_new(s):
     now = datetime.now(TASHKENT)
+    resolve_channels(s)
+    videos = s.setdefault("videos", {})
     sent = 0
     for m in finished_matches():
         if TEST and sent >= 2:
             break
-        if m["id"] in s["offered"] and not TEST:
+        if (m["id"] in videos or m["id"] in s["offered"]) and not TEST:
             continue
         if now - m["end"] > timedelta(days=8 if TEST else 1.25):
             continue
-        if not any(m["code"] in c for _, c in OFFICIAL_CHANNELS.values()):
+        if not channels_for(s, m["code"]):
             continue
         tries = s.setdefault("tries", {})
         if tries.get(m["id"], 0) >= MAX_TRIES and not TEST:
             continue
         tries[m["id"]] = tries.get(m["id"], 0) + 1
-        url = find_video(m)
+        url = find_video(m, s)
         if not url:
+            continue
+        videos[m["id"]] = url  # live_board.py shu havolani "Obzor" sifatida ko'rsatadi
+        if m["code"] not in DM_CODES:
             continue
         t = text(m, url)
         tg("sendMessage", chat_id=ADMIN_ID, text=t, parse_mode="HTML",
