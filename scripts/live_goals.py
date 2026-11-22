@@ -3,16 +3,20 @@
 Har daqiqada ishga tushadi. Har 10 daqiqada barcha ligalar skanerlanadi (qaysi top o'yinlar
 ketayotgani/boshlanayotganini bilish uchun), oraliqda faqat shu ligalar so'raladi.
 """
+import os
 import re
 import json
 import time
 import html
+import requests
 from datetime import datetime, timedelta
 
-from post_results import (LEAGUES, TASHKENT, get_events, parse_event, basic_event, is_top,
+from goal_video import make_goal_video
+from post_results import (BOT_TOKEN, CHANNEL_ID, GROUP_ID, LEAGUES, TASHKENT, get_events, parse_event, basic_event, is_top,
                           make_result_card, league_title, send_photo, channel_info, TEST_MODE)
 
 STATE_FILE = "live.json"
+LIVE_GIF = os.environ.get("LIVE_GIF", "1") != "0"  # "0" — animatsiyani o'chirib, oddiy rasmga qaytish
 SCAN_EVERY_SEC = 600
 FIRST_SIGHT_WINDOW_MIN = 3  # bot o'yin o'rtasida birinchi marta ko'rsa — faqat so'nggi 3 daqiqadagi gollarni yuboradi
 
@@ -55,12 +59,28 @@ def caption(label, m, g, minute):
     return "\n".join(lines)
 
 
+def _send_gif(chat_id, data, cap):
+    r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendAnimation",
+                      data={"chat_id": chat_id, "caption": cap, "parse_mode": "HTML"},
+                      files={"animation": ("gol.gif", data, "image/gif")}, timeout=60)
+    print("TELEGRAM gif", chat_id, ":", r.status_code, r.text[:150])
+    return r.ok
+
+
 def post_goal(label, m, g, hg, ag, upto, minute):
-    """Gol uchun bitta rasm: o'sha paytdagi hisob va shu paytgacha bo'lgan voqealar."""
+    """Gol uchun animatsion GIF (bo'lmasa rasm): o'sha paytdagi hisob va shu paytgacha bo'lgan voqealar."""
     snap = dict(m, hg=hg, ag=ag, events=m["events"][:upto])
     live = {"min": minute, "title": goal_title(g) if g else "GOL!", "name": g["name"] if g else ""}
     img = make_result_card(label, snap, live)
-    return bool(send_photo(img, caption(label, snap, g, minute)))
+    cap = caption(label, snap, g, minute)
+    if LIVE_GIF:
+        word = "AVTOGOL!" if g and g["og"] else "GOOOOL!"
+        gif = make_goal_video(img, word)
+        if gif and _send_gif(CHANNEL_ID, gif, cap):
+            if GROUP_ID:
+                _send_gif(GROUP_ID, gif, cap)
+            return True
+    return bool(send_photo(img, cap))
 
 
 def post_red(label, m, e, hg, ag, upto):
