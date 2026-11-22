@@ -834,6 +834,10 @@ TOP_CLUBS = {
     "bayer leverkusen", "paris saint-germain", "juventus", "inter milan", "ac milan", "napoli", "as roma",
     "al nassr", "al hilal", "galatasaray", "fenerbahce", "benfica", "porto", "sporting cp", "ajax",
     "istanbul basaksehir", "basaksehir", "basaksehir fk",
+    # ESPN ba'zan boshqacha yozadi
+    "internazionale", "inter", "milan", "atletico de madrid", "atletico", "bayern", "bayern munchen",
+    "paris saint germain", "psg", "man city", "man united", "tottenham", "newcastle", "sporting", "roma",
+    "borussia dortmund", "bayer 04 leverkusen",
 }
 # O'zbekiston klublari (nomning bir qismi bo'yicha) — ularning barcha xalqaro o'yinlari uchun tarkib yuboriladi
 UZ_CLUBS = ("pakhtakor", "nasaf", "bunyodkor", "navbahor", "agmk", "sogdiana", "neftchi", "lokomotiv tashkent")

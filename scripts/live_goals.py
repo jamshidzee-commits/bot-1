@@ -189,6 +189,7 @@ def main():
                     print("LIVE ERROR", ev.get("id"), e)
     state["dbg"] = {"ts": datetime.now(TASHKENT).strftime("%H:%M:%S"), "full": full, "targets": len(targets), "in_play": dbg}
     if full:
+        state["dbg_full"] = state["dbg"]
         state["watch"] = sorted(watch)
         state["scan_ts"] = time.time()
     if not TEST_MODE:
