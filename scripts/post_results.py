@@ -38,6 +38,8 @@ LEAGUES = {
     "uefa.champions": "UEFA — CHEMPIONLAR LIGASI",
     "uefa.europa": "UEFA — YEVROPA LIGASI",
     "uefa.europa.conf": "UEFA — KONFERENSIYALAR LIGASI",
+    "afc.champions": "AFC — OSIYO CHEMPIONLAR LIGASI",
+    "afc.cup": "AFC — OSIYO CHEMPIONLAR LIGASI 2",
 }
 
 MONTHS = {1: "YANVAR", 2: "FEVRAL", 3: "MART", 4: "APREL", 5: "MAY", 6: "IYUN",
@@ -55,6 +57,7 @@ SHORT = {
     "Bayer Leverkusen": "Leverkusen", "Eintracht Frankfurt": "Frankfurt",
     "Atlético Madrid": "Atlético", "Brighton & Hove Albion": "Brighton",
     "AFC Bournemouth": "Bournemouth",
+    "Pakhtakor Tashkent": "Pakhtakor", "Navbahor Namangan": "Navbahor", "Lokomotiv Tashkent": "Lokomotiv",
 }
 
 logo_cache = {}
@@ -245,6 +248,8 @@ LEAGUE_STYLE = {
     "ned.1": ((74, 40, 8), (250, 145, 40)),
     "tur.1": ((82, 12, 24), (240, 65, 75)),
     "ksa.1": ((14, 72, 52), (55, 205, 145)),
+    "afc.champions": ((8, 64, 56), (50, 200, 150)),
+    "afc.cup": ((72, 40, 18), (240, 150, 70)),
 }
 DEFAULT_STYLE = ((20, 32, 100), (115, 145, 255))
 
@@ -313,6 +318,11 @@ def make_flag(code):
         d.rectangle((0, 0, w, h), fill=(255, 255, 255))
         d.rectangle((w * 0.42, 0, w * 0.58, h), fill=(206, 17, 36))
         d.rectangle((0, h * 0.4, w, h * 0.6), fill=(206, 17, 36))
+    elif code and code.startswith("afc"):  # Osiyo: yashil fon, oq doira
+        d.rectangle((0, 0, w, h), fill=(0, 122, 80))
+        r = h * 0.3
+        d.ellipse((w / 2 - r, h / 2 - r, w / 2 + r, h / 2 + r), outline=(255, 255, 255), width=4 * k)
+        d.ellipse((w / 2 - r * 0.45, h / 2 - r * 0.45, w / 2 + r * 0.45, h / 2 + r * 0.45), fill=(255, 255, 255))
     else:  # UEFA va boshqalar: ko'k fon, yulduzlar halqasi
         d.rectangle((0, 0, w, h), fill=(0, 51, 153))
         for i in range(12):
@@ -328,8 +338,8 @@ def make_flag(code):
     return fl
 
 
-PRIORITY = ["uefa.champions", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1",
-            "uefa.europa", "uefa.europa.conf", "ksa.1", "tur.1", "por.1", "ned.1"]
+PRIORITY = ["uefa.champions", "afc.champions", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1",
+            "uefa.europa", "uefa.europa.conf", "afc.cup", "ksa.1", "tur.1", "por.1", "ned.1"]
 MAX_ROWS = 24  # bitta rasmga sig'adigan maksimal o'yinlar soni
 
 _channel = {}
@@ -661,7 +671,7 @@ def make_result_card(label, m):
 
 
 def league_title(label):
-    return label.title().replace("Uefa", "UEFA")
+    return label.title().replace("Uefa", "UEFA").replace("Afc", "AFC")
 
 
 def load_cards():
@@ -778,6 +788,8 @@ TOP_CLUBS = {
     "al nassr", "al hilal", "galatasaray", "fenerbahce", "benfica", "porto", "sporting cp", "ajax",
     "istanbul basaksehir", "basaksehir", "basaksehir fk",
 }
+# O'zbekiston klublari (nomning bir qismi bo'yicha) — ularning barcha xalqaro o'yinlari uchun tarkib yuboriladi
+UZ_CLUBS = ("pakhtakor", "nasaf", "bunyodkor", "navbahor", "agmk", "sogdiana", "neftchi", "lokomotiv tashkent")
 LINEUP_BEFORE_MIN = 100  # o'yindan necha daqiqa oldin tarkibni qidirishni boshlaymiz
 LINEUP_AFTER_MIN = 20    # o'yin boshlangandan keyin ham shuncha daqiqa urinamiz
 POS_RANK = {"G": 0, "D": 1, "M": 2, "F": 3, "A": 3}
@@ -789,7 +801,9 @@ def _norm(t):
 
 
 def is_top(m, code):
-    return code == "uefa.champions" or _norm(m["home"]) in TOP_CLUBS or _norm(m["away"]) in TOP_CLUBS
+    names = (_norm(m["home"]), _norm(m["away"]))
+    return (code in ("uefa.champions", "afc.champions") or any(n in TOP_CLUBS for n in names)
+            or any(k in n for n in names for k in UZ_CLUBS))
 
 
 def basic_event(ev):
