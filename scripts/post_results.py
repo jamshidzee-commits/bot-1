@@ -671,6 +671,19 @@ def make_result_card(label, m, live=None):
     d.text((180, 520), hn, font=hf, fill=(255, 255, 255, 255), anchor="mm")
     d.text((900, 520), an, font=af, fill=(255, 255, 255, 255), anchor="mm")
 
+    if live and live.get("banner"):  # katta "GOOOOL!" yozuvi: nomlar va voqealar paneli oralig'ida
+        btxt, bcol = live["banner"]
+        bsize = 78
+        bf = F(bsize, True)
+        while d.textlength(btxt, font=bf) > W - 170 and bsize > 40:
+            bsize -= 4
+            bf = F(bsize, True)
+        bw, by = d.textlength(btxt, font=bf), 590
+        d.rounded_rectangle((540 - bw / 2 - 38, by - 44, 540 + bw / 2 + 38, by + 44), 26, fill=(0, 0, 0, 175),
+                            outline=bcol + (255,), width=3)
+        d.text((543, by + 4), btxt, font=bf, fill=(0, 0, 0, 255), anchor="mm")
+        d.text((540, by), btxt, font=bf, fill=bcol + (255,), anchor="mm")
+
     y = top_zone
     if events:
         d.rounded_rectangle((45, y, W - 45, y + panel_h), 20, fill=(4, 12, 22, 175), outline=(255, 255, 255, 60), width=2)

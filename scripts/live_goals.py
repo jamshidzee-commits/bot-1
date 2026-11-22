@@ -16,7 +16,7 @@ from post_results import (BOT_TOKEN, CHANNEL_ID, GROUP_ID, LEAGUES, TASHKENT, ge
                           make_result_card, league_title, send_photo, channel_info, TEST_MODE)
 
 STATE_FILE = "live.json"
-LIVE_GIF = os.environ.get("LIVE_GIF", "1") != "0"  # "0" — animatsiyani o'chirib, oddiy rasmga qaytish
+LIVE_GIF = os.environ.get("LIVE_GIF", "0") == "1"  # "1" — animatsion GIF; standart: "GOOOOL!" yozuvli oddiy rasm
 SCAN_EVERY_SEC = 600
 FIRST_SIGHT_WINDOW_MIN = 3  # bot o'yin o'rtasida birinchi marta ko'rsa — faqat so'nggi 3 daqiqadagi gollarni yuboradi
 
@@ -70,11 +70,12 @@ def _send_gif(chat_id, data, cap):
 def post_goal(label, m, g, hg, ag, upto, minute):
     """Gol uchun animatsion GIF (bo'lmasa rasm): o'sha paytdagi hisob va shu paytgacha bo'lgan voqealar."""
     snap = dict(m, hg=hg, ag=ag, events=m["events"][:upto])
-    live = {"min": minute, "title": goal_title(g) if g else "GOL!", "name": g["name"] if g else ""}
+    word = "AVTOGOL!" if g and g["og"] else "GOOOOL!"
+    live = {"min": minute, "title": goal_title(g) if g else "GOL!", "name": g["name"] if g else "",
+            "banner": (word, (255, 205, 70))}
     img = make_result_card(label, snap, live)
     cap = caption(label, snap, g, minute)
     if LIVE_GIF:
-        word = "AVTOGOL!" if g and g["og"] else "GOOOOL!"
         gif = make_goal_video(img, word)
         if gif and _send_gif(CHANNEL_ID, gif, cap):
             if GROUP_ID:
@@ -87,7 +88,8 @@ def post_red(label, m, e, hg, ag, upto):
     """Qizil kartochka: hisob o'zgarmaydi, lekin rasmda qizil plashka."""
     snap = dict(m, hg=hg, ag=ag, events=m["events"][:upto])
     team = m["home"] if e["side"] == "home" else m["away"]
-    live = {"min": e["min"], "title": f"QIZIL KARTOCHKA · {team.upper()}", "name": e["name"] or "Chetlatildi", "red": True}
+    live = {"min": e["min"], "title": f"QIZIL KARTOCHKA · {team.upper()}", "name": e["name"] or "Chetlatildi", "red": True,
+            "banner": ("QIZIL KARTOCHKA!", (255, 75, 75))}
     img = make_result_card(label, snap, live)
     ee = html.escape
     link, _ = channel_info()
