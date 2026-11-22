@@ -784,7 +784,7 @@ def post_finished(now, sent, cards):
         for d in dates:
             for ev in get_events(code, d):
                 m = parse_event(ev)
-                if m and m["id"] not in seen:
+                if m and m["id"] not in seen and afc_ok(code, m):
                     seen.add(m["id"])
                     finished.append((label, m))
     finished.sort(key=lambda x: x[1]["dt"])
@@ -832,10 +832,28 @@ def _norm(t):
     return "".join(c for c in unicodedata.normalize("NFKD", (t or "").lower()) if not unicodedata.combining(c))
 
 
+def _name_forms(*names):
+    out = set()
+    for n in names:
+        n = _norm(n)
+        out |= {n, n.replace("-", " ")}
+    return out
+
+
+def afc_ok(code, m):
+    """Osiyo turnirlari (AFC): faqat O'zbekiston klublari va Al Nassr ishtirokidagi o'yinlar."""
+    if not code.startswith("afc."):
+        return True
+    forms = _name_forms(m["home"], m["away"])
+    return any(k in n for n in forms for k in UZ_CLUBS + ("al nassr",))
+
+
 def is_top(m, code):
-    names = (_norm(m["home"]), _norm(m["away"]))
-    return (code in ("uefa.champions", "afc.champions") or any(n in TOP_CLUBS for n in names)
-            or any(k in n for n in names for k in UZ_CLUBS))
+    if code.startswith("afc."):
+        return afc_ok(code, m)
+    forms = _name_forms(m["home"], m["away"])
+    return (code == "uefa.champions" or any(n in TOP_CLUBS for n in forms)
+            or any(k in n for n in forms for k in UZ_CLUBS))
 
 
 def basic_event(ev):
@@ -1047,7 +1065,7 @@ def post_upcoming(now, sent):
     for code, label in LEAGUES.items():
         for ev in get_events(code, today):
             m = parse_event(ev, upcoming=True)
-            if m and m["id"] not in seen:
+            if m and m["id"] not in seen and afc_ok(code, m):
                 seen.add(m["id"])
                 items.append((label, m))
     items.sort(key=lambda x: x[1]["dt"])
