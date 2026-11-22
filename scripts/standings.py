@@ -10,7 +10,7 @@ from datetime import timedelta
 from PIL import Image, ImageDraw
 
 from post_results import (LEAGUES, LEAGUE_STYLE, TASHKENT, MONTHS, DAYS, F, W, get_events, get_logo, fit_text,
-                          channel_info, league_title, send_photo, TEST_MODE)
+                          channel_info, league_title, send_photo, paste_logo, TEST_MODE)
 
 TABLE_LEAGUES = ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "por.1", "ned.1", "tur.1", "ksa.1"]
 STANDINGS = "https://site.api.espn.com/apis/v2/sports/soccer/{code}/standings"
@@ -101,8 +101,9 @@ def make_table_image(code, rows, now):
         k = yy / max(1, height - 1)
         d.line((0, yy, W, yy), fill=(int(dark[0] * (1 - 0.55 * k)), int(dark[1] * (1 - 0.55 * k)),
                                       int(dark[2] * (1 - 0.55 * k)), 255))
-    d.ellipse((55, 42, 155, 142), fill=(10, 72, 112, 130), outline=(70, 185, 240, 230), width=3)
-    d.text((82, 59), "F", font=F(50, True), fill=(255, 255, 255, 255))
+    if not paste_logo(img, 105, 92, 104):
+        d.ellipse((55, 42, 155, 142), fill=(10, 72, 112, 130), outline=(70, 185, 240, 230), width=3)
+        d.text((82, 59), "F", font=F(50, True), fill=(255, 255, 255, 255))
     d.text((185, 55), "FUTBOL OLAMI", font=F(48, True), fill=(245, 250, 255, 255))
     d.text((188, 112), "Futbol haqida hammasi!", font=F(26), fill=(150, 215, 250, 255))
 

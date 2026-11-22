@@ -68,6 +68,23 @@ def F(size, bold=False):
     return ImageFont.truetype(BOLD if bold else REGULAR, size)
 
 
+_LOGO = {}
+
+
+def paste_logo(img, cx, cy, size):
+    """Kanal emblemasi (assets/logo.png) — doira ichida, markaz (cx, cy)."""
+    try:
+        if "img" not in _LOGO:
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "logo.png")
+            _LOGO["img"] = Image.open(path).convert("RGBA")
+        lg = _LOGO["img"].resize((size, size), Image.LANCZOS)
+        img.alpha_composite(lg, (int(cx - size / 2), int(cy - size / 2)))
+        return True
+    except Exception as e:
+        print("LOGO xato:", e)
+        return False
+
+
 def load_sent():
     try:
         with open(SENT_FILE, encoding="utf-8") as f:
@@ -451,8 +468,9 @@ def make_list_image(title, dt, rows, page_no=1, total_pages=1):
     for x in range(-250, W + 400, 190):
         d.polygon([(x, 0), (x + 65, 0), (x - 170, 250), (x - 235, 250)], fill=(25, 125, 190, 30))
 
-    d.ellipse((55, 42, 155, 142), fill=(10, 72, 112, 110), outline=(70, 185, 240, 230), width=3)
-    d.text((82, 59), "F", font=F(50, True), fill=(255, 255, 255, 255))
+    if not paste_logo(img, 105, 92, 104):
+        d.ellipse((55, 42, 155, 142), fill=(10, 72, 112, 110), outline=(70, 185, 240, 230), width=3)
+        d.text((82, 59), "F", font=F(50, True), fill=(255, 255, 255, 255))
     d.text((185, 55), "FUTBOL OLAMI", font=F(48, True), fill=(245, 250, 255, 255))
     d.text((188, 112), "Futbol haqida hammasi!", font=F(26), fill=(130, 205, 245, 255))
 
@@ -636,8 +654,9 @@ def make_result_card(label, m, live=None):
     d = ImageDraw.Draw(img, "RGBA")
 
     # sarlavha
-    d.ellipse((55, 38, 125, 108), fill=(10, 72, 112, 150), outline=(70, 185, 240, 230), width=3)
-    d.text((90, 73), "F", font=F(38, True), fill=(255, 255, 255, 255), anchor="mm")
+    if not paste_logo(img, 90, 73, 76):
+        d.ellipse((55, 38, 125, 108), fill=(10, 72, 112, 150), outline=(70, 185, 240, 230), width=3)
+        d.text((90, 73), "F", font=F(38, True), fill=(255, 255, 255, 255), anchor="mm")
     d.text((148, 56), "FUTBOL OLAMI", font=F(38, True), fill=(245, 250, 255, 255), anchor="lm")
     d.text((148, 94), "Futbol haqida hammasi!", font=F(21), fill=(150, 215, 250, 255), anchor="lm")
     code = LEAGUE_CODE.get(label)
@@ -980,8 +999,9 @@ def make_lineup_card(label, m, lu):
     lc = team_color(m.get("home_color", (None, None)), (30, 90, 160))
     rc = team_color(m.get("away_color", (None, None)), (160, 50, 50))
 
-    d.ellipse((55, 38, 125, 108), fill=(10, 72, 112, 150), outline=(70, 185, 240, 230), width=3)
-    d.text((90, 73), "F", font=F(38, True), fill=(255, 255, 255, 255), anchor="mm")
+    if not paste_logo(img, 90, 73, 76):
+        d.ellipse((55, 38, 125, 108), fill=(10, 72, 112, 150), outline=(70, 185, 240, 230), width=3)
+        d.text((90, 73), "F", font=F(38, True), fill=(255, 255, 255, 255), anchor="mm")
     d.text((148, 56), "FUTBOL OLAMI", font=F(38, True), fill=(245, 250, 255, 255), anchor="lm")
     d.text((148, 94), "Futbol haqida hammasi!", font=F(21), fill=(150, 215, 250, 255), anchor="lm")
     img.alpha_composite(make_flag(LEAGUE_CODE.get(label)), (55, 140))
