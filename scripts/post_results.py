@@ -187,30 +187,47 @@ def parse_event(ev, upcoming=False):
     }
 
 
+def _load_logo(url):
+    """Logotipni bir marta yuklaydi (xato bo'lsa 3 marta urinadi); natija — asl rasm yoki None."""
+    if url in logo_cache:
+        return logo_cache[url]
+    img = None
+    for attempt in range(3):
+        try:
+            r = requests.get(url, timeout=15)
+            r.raise_for_status()
+            img = Image.open(BytesIO(r.content)).convert("RGBA")
+            break
+        except Exception as e:
+            print("LOGO ERROR:", url, attempt + 1, e)
+            time.sleep(1.5)
+    logo_cache[url] = img
+    return img
+
+
 def get_logo(url, size=80):
     if not url:
         return None
-    key = (url, size)
-    if key in logo_cache:
-        return logo_cache[key]
-    try:
-        r = requests.get(url, timeout=10)
-        r.raise_for_status()
-        img = Image.open(BytesIO(r.content)).convert("RGBA")
-        img.thumbnail((size, size), Image.Resampling.LANCZOS)
-        logo_cache[key] = img
-        return img
-    except Exception as e:
-        print("LOGO ERROR:", e)
-        logo_cache[key] = None
+    orig = _load_logo(url)
+    if orig is None:
         return None
+    img = orig.copy()
+    img.thumbnail((size, size), Image.Resampling.LANCZOS)
+    return img
 
 
-def draw_logo(img, url, cx, cy, size=64):
+def _initials(name):
+    words = [w for w in (name or "").replace("-", " ").split() if w]
+    return (words[0][0] + words[1][0]).upper() if len(words) > 1 else (name or "?")[:3].upper()
+
+
+def draw_logo(img, url, cx, cy, size=64, name=None):
     d = ImageDraw.Draw(img, "RGBA")
     d.ellipse((cx - size // 2, cy - size // 2, cx + size // 2, cy + size // 2),
               fill=(7, 30, 47, 255), outline=(48, 145, 200, 220), width=2)
     logo = get_logo(url)
+    if not logo and name:
+        d.text((cx, cy), _initials(name), font=F(max(14, size // 3), True), fill=(220, 235, 245, 255), anchor="mm")
     if logo:
         p = logo.copy()
         p.thumbnail((size - 10, size - 10), Image.Resampling.LANCZOS)
@@ -395,8 +412,8 @@ def draw_row(img, y, league, m):
     hn, hf = fit_text(d, m["home"], 262)
     an, af = fit_text(d, m["away"], 320)
     d.text((384, cy), hn, font=hf, fill=(248, 251, 255, 255), anchor="rm")
-    draw_logo(img, m["home_logo"], 428, cy, 66)
-    draw_logo(img, m["away_logo"], 652, cy, 66)
+    draw_logo(img, m["home_logo"], 428, cy, 66, m["home"])
+    draw_logo(img, m["away_logo"], 652, cy, 66, m["away"])
     d.text((694, cy), an, font=af, fill=(248, 251, 255, 255), anchor="lm")
 
     d.rounded_rectangle((476, y + 14, 604, y + 80), 14, fill=(8, 58, 84, 255),
@@ -615,11 +632,13 @@ def make_result_card(label, m):
 
     # jamoalar, hisob
     d.text((540, 235), "YAKUNLANDI", font=F(24, True), fill=(160, 220, 255, 255), anchor="mm")
-    for url, cx in ((m["home_logo"], 180), (m["away_logo"], 900)):
+    for url, cx, nm in ((m["home_logo"], 180, m["home"]), (m["away_logo"], 900, m["away"])):
         lg = get_logo(url, 190)
         d.ellipse((cx - 105, 270, cx + 105, 480), fill=(5, 16, 29, 150), outline=(255, 255, 255, 70), width=3)
         if lg:
             img.alpha_composite(lg, (int(cx - lg.width / 2), int(375 - lg.height / 2)))
+        else:
+            d.text((cx, 375), _initials(nm), font=F(64, True), fill=(220, 235, 245, 255), anchor="mm")
     d = ImageDraw.Draw(img, "RGBA")
     d.text((540, 372), f"{m['hg']} : {m['ag']}", font=F(112, True), fill=(255, 255, 255, 255), anchor="mm")
     if m.get("note"):
@@ -908,11 +927,13 @@ def make_lineup_card(label, m, lu):
            fill=(200, 225, 240, 255), anchor="rm")
     d.text((540, 228), "BOSHLANG'ICH TARKIBLAR", font=F(36, True), fill=(255, 255, 255, 255), anchor="mm")
 
-    for url, cx in ((m["home_logo"], 170), (m["away_logo"], 910)):
+    for url, cx, nm in ((m["home_logo"], 170, m["home"]), (m["away_logo"], 910, m["away"])):
         lg = get_logo(url, 150)
         d.ellipse((cx - 82, 288, cx + 82, 452), fill=(5, 16, 29, 150), outline=(255, 255, 255, 70), width=3)
         if lg:
             img.alpha_composite(lg, (int(cx - lg.width / 2), int(370 - lg.height / 2)))
+        else:
+            d.text((cx, 370), _initials(nm), font=F(52, True), fill=(220, 235, 245, 255), anchor="mm")
     d = ImageDraw.Draw(img, "RGBA")
     d.text((540, 355), "VS", font=F(80, True), fill=(255, 255, 255, 255), anchor="mm")
     d.text((540, 432), dt.strftime("%H:%M"), font=F(36, True), fill=(255, 215, 90, 255), anchor="mm")
