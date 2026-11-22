@@ -760,7 +760,7 @@ def card_caption(c, video=None):
     e = html.escape
     lines = [f"✅ <b>{e(c['home'], quote=False)} {c['hg']}:{c['ag']} {e(c['away'], quote=False)}</b>",
              f"🏆 {e(league_title(c['league']), quote=False)}"]
-    links = [f'🔗 <a href="{e(c["espn"])}">ESPN</a>']
+    links = [f'🔗 <a href="{e(c["espn"])}">Statistika</a>']
     if video:
         links.append(f'▶️ <a href="{e(video)}">Obzor</a>')
     lines.append("\n" + "  ·  ".join(links))
@@ -770,7 +770,7 @@ def card_caption(c, video=None):
 
 
 def post_card(label, m, cards, videos):
-    """Tugagan o'yin: bitta rasm (hisob) + pastda ESPN va (bo'lsa) YouTube sharh havolasi."""
+    """Tugagan o'yin: bitta rasm (hisob) + pastda Statistika va (bo'lsa) YouTube sharh havolasi."""
     c = {"home": m["home"], "away": m["away"], "hg": m["hg"], "ag": m["ag"],
          "league": label, "espn": m["link"]}
     video = videos.get(m["id"])
@@ -1046,7 +1046,7 @@ def lineup_caption(label, m):
     return (f"📋 <b>Boshlang'ich tarkiblar</b>\n"
             f"⚽ {e(m['home'], quote=False)} — {e(m['away'], quote=False)}\n"
             f"🏆 {e(league_title(label), quote=False)} · ⏰ {m['dt']:%H:%M}\n\n"
-            f'🔗 <a href="{e(m["link"])}">ESPN</a>\n\n'
+            f'🔗 <a href="{e(m["link"])}">Statistika</a>\n\n'
             + (f'<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "<b>FUTBOL OLAMI</b>"))
 
 
