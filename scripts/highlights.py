@@ -1,6 +1,7 @@
 import os, json, html, hashlib, re, unicodedata, requests
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -185,9 +186,14 @@ def handle_buttons(s):
         action, mid = q["data"].split(":", 1)
         item = s["offered"].get(mid)
         if action == "pub" and item and not item.get("done"):
-            tg("sendMessage", chat_id=CHANNEL_ID, text=item["text"], parse_mode="HTML")
-            if GROUP_ID:
-                tg("sendMessage", chat_id=GROUP_ID, text=item["text"], parse_mode="HTML")
+            if item.get("news"):
+                send_news(CHANNEL_ID, item["text"], item.get("image", ""))
+                if GROUP_ID:
+                    send_news(GROUP_ID, item["text"], item.get("image", ""))
+            else:
+                tg("sendMessage", chat_id=CHANNEL_ID, text=item["text"], parse_mode="HTML")
+                if GROUP_ID:
+                    tg("sendMessage", chat_id=GROUP_ID, text=item["text"], parse_mode="HTML")
             item["done"] = "published"
             note = "✅ Kanalga joylandi"
         else:
@@ -274,12 +280,22 @@ def read_feed(name, url):
         title = clean(it.findtext("title"))
         link = (it.findtext("link") or "").strip()
         desc = clean(it.findtext("description"))
+        full = it.findtext("{http://purl.org/rss/1.0/modules/content/}encoded") or ""
+        img = ""
+        for tag in ("enclosure", "{http://search.yahoo.com/mrss/}content", "{http://search.yahoo.com/mrss/}thumbnail"):
+            el = it.find(tag)
+            if el is not None and el.get("url") and (el.get("type", "image").startswith("image")):
+                img = el.get("url"); break
+        if not img:
+            m_ = re.search(r'<img[^>]+src=["\']([^"\']+)', (full or it.findtext("description") or ""))
+            img = m_.group(1) if m_ else ""
         try:
             dt = parsedate_to_datetime(it.findtext("pubDate"))
         except Exception:
             dt = None
         if title and link:
-            items.append({"source": name, "title": lotin(title), "link": link, "desc": lotin(desc), "dt": dt})
+            items.append({"source": name, "title": lotin(title), "link": link, "desc": lotin(desc), "dt": dt,
+                          "full": lotin(_paras(full)) if full else "", "image": img})
     print("NEWS", name, len(items), "ta")
     return items
 
@@ -289,15 +305,104 @@ def is_football(n):
     text_ = (n["title"] + " " + n["desc"]).lower()
     return any(w in text_ for w in FOOTBALL_WORDS)
 
+_SKIP_TAGS = {"script", "style", "nav", "footer", "header", "aside", "form", "noscript", "figure", "button"}
+
+class _ArticleParser(HTMLParser):
+    """Sahifadan <article> (bo'lmasa butun sahifa) ichidagi abzatslar va og:image."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.image, self.skip, self.in_article, self.in_p = "", 0, 0, False
+        self.art, self.allp, self.cur = [], [], []
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "meta" and a.get("property") == "og:image" and not self.image:
+            self.image = a.get("content", "")
+        if tag in _SKIP_TAGS:
+            self.skip += 1
+        if tag == "article":
+            self.in_article += 1
+        if tag == "p" and not self.skip:
+            self.in_p, self.cur = True, []
+    def handle_endtag(self, tag):
+        if tag in _SKIP_TAGS and self.skip:
+            self.skip -= 1
+        if tag == "article" and self.in_article:
+            self.in_article -= 1
+        if tag == "p" and self.in_p:
+            self.in_p = False
+            t = re.sub(r"\s+", " ", "".join(self.cur)).strip()
+            if t:
+                self.allp.append(t)
+                if self.in_article:
+                    self.art.append(t)
+    def handle_data(self, data):
+        if self.in_p and not self.skip:
+            self.cur.append(data)
+
+_JUNK = ("cookie", "obuna bo", "obuna bo‘l", "подпис", "реклама", "reklama", "©", "barcha huquqlar", "telegram kanal")
+
+def _paras(htm):
+    """HTML (RSS content:encoded) -> abzatslar, har biri alohida qatorda."""
+    parts = re.findall(r"<p[^>]*>(.*?)</p>", htm, flags=re.S | re.I) or [htm]
+    return "\n\n".join(t for t in (clean(x) for x in parts) if len(t) > 3)
+
+def fetch_article(link):
+    """(matn, rasm) — maqola sahifasidan to'liq matn. Xato bo'lsa ("", "")."""
+    try:
+        r = requests.get(link, timeout=30, headers={"User-Agent": "Mozilla/5.0 FutbolOlamiBot"})
+        r.encoding = r.encoding or "utf-8"
+        p = _ArticleParser()
+        p.feed(r.text)
+    except Exception as e:
+        print("ARTICLE xato:", link, e)
+        return "", ""
+    paras = [t for t in (p.art or p.allp) if len(t) > 40 and not any(j in t.lower() for j in _JUNK)]
+    return "\n\n".join(paras), p.image
+
+def _channel_footer():
+    try:
+        from post_results import channel_info
+        link, _ = channel_info()
+    except Exception as e:
+        print("CHANNEL INFO xato:", e)
+        link = ""
+    return f'<a href="{html.escape(link)}">FUTBOL OLAMI</a> ✈️' if link else "<b>FUTBOL OLAMI</b>"
+
+MAX_BODY = 3300  # Telegram: xabar 4096 belgigacha
+
 def news_text(n):
-    desc = n["desc"]
-    if len(desc) > 220:
-        desc = desc[:220].rsplit(" ", 1)[0] + "…"
-    body = f"📰 <b>{html.escape(n['title'])}</b>\n\n"
-    if desc:
-        body += f"{html.escape(desc)}\n\n"
-    body += f"🔗 Manba: <a href=\"{html.escape(n['link'])}\">{n['source']}</a>\n\n<b>FUTBOL OLAMI</b>"
-    return body
+    """Butun yangilik matni Telegramning o'zida (saytga havolasiz). Qaytaradi: (matn, rasm_url)."""
+    body, image = n.get("full") or "", n.get("image") or ""
+    if len(body) < 300:  # RSS'da qisqa — sahifadan to'liq matnni olamiz
+        page, pimg = fetch_article(n["link"])
+        if len(page) > len(body):
+            body = lotin(page) if re.search(r"[А-Яа-яЎўҚқҒғҲҳ]", page) else page
+        image = image or pimg
+    if len(body) < 80:
+        body = n["desc"] or body
+    paras, total = [], 0
+    for para in [x.strip() for x in body.split("\n\n") if x.strip()]:
+        if paras and para.strip() == paras[-1]:
+            continue
+        if total + len(para) > MAX_BODY:
+            if not paras:
+                paras.append(para[:MAX_BODY].rsplit(" ", 1)[0] + "…")
+            break
+        paras.append(para)
+        total += len(para)
+    if paras and paras[0].strip().lower() == n["title"].strip().lower():
+        paras = paras[1:]
+    text = f"📰 <b>{html.escape(n['title'], quote=False)}</b>\n\n"
+    if paras:
+        text += "\n\n".join(html.escape(x, quote=False) for x in paras) + "\n\n"
+    text += _channel_footer()
+    if image:  # rasm — xabar tepasida katta ko'rinadi (ko'rinmas havola orqali)
+        text = f'<a href="{html.escape(image)}">&#8203;</a>' + text
+    return text, image
+
+def send_news(chat_id, text, image, **extra):
+    opts = {"url": image, "prefer_large_media": True, "show_above_text": True} if image else {"is_disabled": True}
+    return tg("sendMessage", chat_id=chat_id, text=text, parse_mode="HTML", link_preview_options=opts, **extra)
 
 def offer_news(s):
     _offer(s, FEEDS, "news_init", NEWS_PER_RUN, foreign=False)
@@ -316,8 +421,13 @@ def _offer(s, feeds, init_key, per_run, foreign):
         key = "n" + hashlib.md5(n["link"].encode()).hexdigest()[:10]
         if key in seen or any(f["key"] == key for f in fresh):
             continue
-        if n["dt"] and now - n["dt"] > timedelta(days=7 if TEST else 1):
-            continue
+        if not n["dt"]:
+            continue  # sanasi noma'lum — eski bo'lishi mumkin
+        if TEST:
+            if now - n["dt"] > timedelta(days=7):
+                continue
+        elif n["dt"].astimezone(TASHKENT).date() != now.date():
+            continue  # faqat bugungi yangiliklar
         n["key"] = key
         fresh.append(n)
     if first_run and not TEST:
@@ -329,11 +439,11 @@ def _offer(s, feeds, init_key, per_run, foreign):
     for n in fresh[:2 if TEST else per_run]:
         if foreign:
             n["title"], n["desc"] = tarjima(n["title"]), tarjima(n["desc"])
-        t = news_text(n)
-        tg("sendMessage", chat_id=ADMIN_ID, text=t, parse_mode="HTML",
-           reply_markup={"inline_keyboard": [[{"text": "✅ Kanalga", "callback_data": f"pub:{n['key']}"},
-                                              {"text": "❌ Kerak emas", "callback_data": f"skip:{n['key']}"}]]})
-        s["offered"][n["key"]] = {"text": t}
+        t, image = news_text(n)
+        send_news(ADMIN_ID, t, image,
+                  reply_markup={"inline_keyboard": [[{"text": "✅ Kanalga", "callback_data": f"pub:{n['key']}"},
+                                                     {"text": "❌ Kerak emas", "callback_data": f"skip:{n['key']}"}]]})
+        s["offered"][n["key"]] = {"text": t, "image": image, "news": True}
         seen.append(n["key"])
     s[init_key] = True
     s["news_seen"] = seen[-2000:]
