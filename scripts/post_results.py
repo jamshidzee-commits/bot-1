@@ -776,6 +776,7 @@ TOP_CLUBS = {
     "arsenal", "chelsea", "tottenham hotspur", "newcastle united", "bayern munich", "borussia dortmund",
     "bayer leverkusen", "paris saint-germain", "juventus", "inter milan", "ac milan", "napoli", "as roma",
     "al nassr", "al hilal", "galatasaray", "fenerbahce", "benfica", "porto", "sporting cp", "ajax",
+    "istanbul basaksehir", "basaksehir", "basaksehir fk",
 }
 LINEUP_BEFORE_MIN = 100  # o'yindan necha daqiqa oldin tarkibni qidirishni boshlaymiz
 LINEUP_AFTER_MIN = 20    # o'yin boshlangandan keyin ham shuncha daqiqa urinamiz
