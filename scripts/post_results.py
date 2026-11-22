@@ -16,7 +16,6 @@ TASHKENT = ZoneInfo("Asia/Tashkent")
 ESPN = "https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/scoreboard"
 SENT_FILE = "sent.json"
 W = 1080
-MAX_MATCHES = 5
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REGULAR = os.path.join(HERE, "..", "api", "fonts", "DejaVuSans.ttf")
@@ -48,6 +47,10 @@ SHORT = {
     "Newcastle United": "Newcastle", "West Ham United": "West Ham",
     "Nottingham Forest": "Nott'm Forest", "Paris Saint-Germain": "PSG",
     "Bayern Munich": "Bayern", "Athletic Club": "Athletic",
+    "Borussia Mönchengladbach": "Gladbach", "Borussia Dortmund": "Dortmund",
+    "Bayer Leverkusen": "Leverkusen", "Eintracht Frankfurt": "Frankfurt",
+    "Atlético Madrid": "Atlético", "Brighton & Hove Albion": "Brighton",
+    "AFC Bournemouth": "Bournemouth",
 }
 
 logo_cache = {}
@@ -160,30 +163,6 @@ def fit_text(d, text, max_width, start=31, minimum=20):
     return t, f
 
 
-def draw_match(img, y, m):
-    d = ImageDraw.Draw(img, "RGBA")
-    hn, hf = fit_text(d, m["home"], 232)
-    an, af = fit_text(d, m["away"], 320)
-    cy = y + 60
-
-    d.rounded_rectangle((45, y, W - 45, y + 124), 18, fill=(6, 27, 44, 250),
-                        outline=(38, 120, 165, 220), width=2)
-    d.text((66, cy), m["dt"].strftime("%H:%M"), font=F(30, True), fill=(240, 248, 252, 255), anchor="lm")
-
-    d.text((394, cy), hn, font=hf, fill=(248, 251, 255, 255), anchor="rm")
-    draw_logo(img, m["home_logo"], 440, cy, 68)
-    draw_logo(img, m["away_logo"], 640, cy, 68)
-    d.text((682, cy), an, font=af, fill=(248, 251, 255, 255), anchor="lm")
-
-    d.rounded_rectangle((488, y + 24, 592, y + 90), 13, fill=(8, 58, 84, 255),
-                        outline=(55, 160, 215, 230), width=2)
-    center = "VS" if m.get("upcoming") else f"{m['hg']} : {m['ag']}"
-    d.text((540, y + 57), center, font=F(30, True), fill=(255, 255, 255, 255), anchor="mm")
-
-    if m["note"]:
-        d.text((540, y + 108), m["note"], font=F(17, True), fill=(130, 205, 245, 255), anchor="mm")
-
-
 LEAGUE_CODE = {name: code for code, name in LEAGUES.items()}
 
 # (fon rangi, chiziq rangi) — har bir davlat uchun o'z tusi
@@ -280,9 +259,79 @@ def make_flag(code):
     return fl
 
 
-def make_image(title, dt, groups, page_no, total_pages):
-    count = sum(len(ms) for _, ms in groups)
-    height = 430 + len(groups) * 100 + count * 150 + 160
+PRIORITY = ["uefa.champions", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1",
+            "uefa.europa", "uefa.europa.conf", "ksa.1", "tur.1", "por.1", "ned.1"]
+MAX_ROWS = 24  # bitta rasmga sig'adigan maksimal o'yinlar soni
+
+_channel = {}
+
+
+def channel_info():
+    """(havola, @nom) — kanal havolasi. CHANNEL_LINK env, @username yoki getChat orqali."""
+    if _channel:
+        return _channel["v"]
+    link, handle = os.environ.get("CHANNEL_LINK", "").strip(), ""
+    uname = CHANNEL_ID.lstrip("@") if CHANNEL_ID.startswith("@") else ""
+    if not link and not uname:
+        try:
+            r = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChat",
+                             params={"chat_id": CHANNEL_ID}, timeout=15).json()
+            res = r.get("result", {}) if r.get("ok") else {}
+            uname = res.get("username", "")
+            link = link or res.get("invite_link", "")
+        except Exception as e:
+            print("getChat ERROR:", e)
+    if uname:
+        link = link or f"https://t.me/{uname}"
+        handle = "@" + uname
+    elif link.startswith("https://t.me/") and "+" not in link and "joinchat" not in link:
+        handle = "@" + link.rsplit("/", 1)[-1]
+    _channel["v"] = (link, handle)
+    return _channel["v"]
+
+
+def select_main(items, cap=MAX_ROWS):
+    """Eng muhim ligalar birinchi; ko'rsatishda vaqt bo'yicha tartiblanadi."""
+    rank = {c: i for i, c in enumerate(PRIORITY)}
+    chosen = sorted(items, key=lambda x: (rank.get(LEAGUE_CODE.get(x[0]), 99), x[1]["dt"]))[:cap]
+    return sorted(chosen, key=lambda x: x[1]["dt"])
+
+
+def chunk_even(items, size=MAX_ROWS):
+    n = max(1, -(-len(items) // size))
+    per = -(-len(items) // n)
+    return [items[i:i + per] for i in range(0, len(items), per)]
+
+
+def draw_row(img, y, league, m):
+    d = ImageDraw.Draw(img, "RGBA")
+    code = LEAGUE_CODE.get(league)
+    bg, line = LEAGUE_STYLE.get(code, DEFAULT_STYLE)
+    cy = y + 48
+    fill = tuple(int(c * 0.55 + 6 * 0.45) for c in bg)
+    d.rounded_rectangle((45, y, W - 45, y + 96), 18, fill=fill + (250,), outline=line + (235,), width=2)
+    fl = make_flag(code).resize((46, 31), Image.Resampling.LANCZOS)
+    img.alpha_composite(fl, (62, cy - 15))
+
+    hn, hf = fit_text(d, m["home"], 262)
+    an, af = fit_text(d, m["away"], 320)
+    d.text((384, cy), hn, font=hf, fill=(248, 251, 255, 255), anchor="rm")
+    draw_logo(img, m["home_logo"], 428, cy, 66)
+    draw_logo(img, m["away_logo"], 652, cy, 66)
+    d.text((694, cy), an, font=af, fill=(248, 251, 255, 255), anchor="lm")
+
+    d.rounded_rectangle((476, y + 14, 604, y + 80), 14, fill=(8, 58, 84, 255),
+                        outline=(55, 160, 215, 230), width=2)
+    center = m["dt"].strftime("%H:%M") if m.get("upcoming") else f"{m['hg']} : {m['ag']}"
+    d.text((540, y + 47), center, font=F(30, True), fill=(255, 255, 255, 255), anchor="mm")
+    if m.get("note"):
+        d.text((540, y + 88), m["note"], font=F(15, True), fill=(130, 205, 245, 255), anchor="mm")
+
+
+def make_list_image(title, dt, rows, page_no=1, total_pages=1):
+    """Barcha o'yinlar bitta rasmda: ixcham ro'yxat, pastda kanal nomi."""
+    top, step, foot_h = 355, 108, 190
+    height = top + len(rows) * step + foot_h
     img = Image.new("RGBA", (W, height), (5, 16, 29, 255))
     d = ImageDraw.Draw(img, "RGBA")
 
@@ -300,51 +349,26 @@ def make_image(title, dt, groups, page_no, total_pages):
     d.rounded_rectangle((55, 180, 205, 320), 20, fill=(245, 249, 252, 255))
     d.rounded_rectangle((55, 180, 205, 224), 20, fill=(235, 55, 55, 255))
     d.rectangle((55, 205, 205, 224), fill=(235, 55, 55, 255))
-    d.text((130, 203), MONTHS[dt.month], font=F(21, True), anchor="mm", fill=(255, 255, 255, 255))
+    d.text((130, 203), MONTHS[dt.month], font=F(21, True), fill=(255, 255, 255, 255), anchor="mm")
     d.text((88, 228), dt.strftime("%d"), font=F(58, True), fill=(8, 25, 40, 255))
     d.text((245, 184), title, font=F(40, True), fill=(248, 252, 255, 255))
     d.text((248, 250), f"{dt.strftime('%d.%m.%Y')} | {DAYS[dt.weekday()]}", font=F(25), fill=(145, 200, 230, 255))
-
     if total_pages > 1:
         d.rounded_rectangle((900, 188, 1018, 242), 16, fill=(7, 105, 155, 235))
-        d.text((959, 215), f"{page_no}/{total_pages}", font=F(26, True), anchor="mm", fill=(255, 255, 255, 255))
+        d.text((959, 215), f"{page_no}/{total_pages}", font=F(26, True), fill=(255, 255, 255, 255), anchor="mm")
 
-    y = 355
-    for league, matches in groups:
-        lcode = LEAGUE_CODE.get(league)
-        bg, line = LEAGUE_STYLE.get(lcode, DEFAULT_STYLE)
-        d.rounded_rectangle((45, y, W - 45, y + 70), 18, fill=bg + (255,),
-                            outline=line + (235,), width=2)
-        img.alpha_composite(make_flag(lcode), (66, y + 35 - FLAG_H // 2))
-        d.text((66 + FLAG_W + 20, y + 35), league, font=F(29, True), anchor="lm", fill=(248, 252, 255, 255))
-        y += 88
-        for m in matches:
-            draw_match(img, y, m)
-            y += 150
-        y += 12
+    y = top
+    for league, m in rows:
+        draw_row(img, y, league, m)
+        y += step
 
-    fy = height - 145
+    fy = height - foot_h + 20
     d.line((60, fy, W - 60, fy), fill=(55, 135, 175, 150), width=2)
-    d.text((70, fy + 25), "Futbol bizni birlashtiradi!", font=F(33, True), fill=(238, 248, 255, 255))
-    d.text((70, fy + 78), "Futbol olami  •  Futbol haqida hammasi!", font=F(25), fill=(125, 195, 225, 255))
+    _, handle = channel_info()
+    d.text((70, fy + 30), "Futbol bizni birlashtiradi!", font=F(33, True), fill=(238, 248, 255, 255))
+    tag = f"Telegram: {handle}" if handle else "Futbol olami  •  Futbol haqida hammasi!"
+    d.text((70, fy + 88), tag, font=F(32, True), fill=(95, 200, 255, 255))
     return img.convert("RGB")
-
-
-def paginate(items):
-    """items: list of (league, match). Returns pages of [(league, [matches])]."""
-    pages, current, count = [], [], 0
-    for league, m in items:
-        if count >= MAX_MATCHES:
-            pages.append(current)
-            current, count = [], 0
-        if current and current[-1][0] == league:
-            current[-1][1].append(m)
-        else:
-            current.append((league, [m]))
-        count += 1
-    if current:
-        pages.append(current)
-    return pages
 
 
 def _send_photo_to(chat_id, data_bytes, caption):
@@ -368,20 +392,23 @@ def send_photo(img, caption):
     return ok
 
 
-def post(items, title):
-    """Send images for a list of (league, match) sorted by time."""
+def post(items, title, caption_text, dt=None):
+    """Bitta ixcham rasm (juda ko'p bo'lsa teng bo'lib bir necha rasm) + kanalga havola."""
     if not items:
         return []
-    pages = paginate(items)
+    items = sorted(items, key=lambda x: x[1]["dt"])
+    pages = chunk_even(items)
+    link, _ = channel_info()
     ok_ids = []
-    for no, groups in enumerate(pages, 1):
-        dt = groups[0][1][0]["dt"]
-        img = make_image(title, dt, groups, no, len(pages))
-        caption = f"<b>FUTBOL OLAMI</b>\n{html.escape(title)}\n{dt.strftime('%d.%m.%Y')}"
-        if len(pages) > 1:
-            caption += f"\nSahifa: {no}/{len(pages)}"
+    for no, rows in enumerate(pages, 1):
+        img = make_list_image(title, dt or rows[0][1]["dt"], rows, no, len(pages))
+        caption = caption_text
+        if link:
+            caption += f'\n\n<a href="{html.escape(link)}">FUTBOL OLAMI</a> ✈️'
+        else:
+            caption += "\n\n<b>FUTBOL OLAMI</b>"
         if send_photo(img, caption):
-            ok_ids += [m["id"] for _, ms in groups for m in ms]
+            ok_ids += [m["id"] for _, m in rows]
     return ok_ids
 
 
@@ -403,14 +430,14 @@ def post_finished(now, sent):
 
     if TEST_MODE:
         print("TEST MODE: sending last 3 finished matches")
-        post(finished[-3:], "O'YIN NATIJALARI")
+        post(finished[-3:], "O'YIN NATIJALARI", "✅ O'yin natijalari")
         return
 
     fresh = [(l, m) for l, m in finished if f"espn-{m['id']}" not in sent]
     if not fresh:
         print("NOTHING NEW (results)")
         return
-    for mid in post(fresh, "O'YIN NATIJALARI"):
+    for mid in post(fresh, "O'YIN NATIJALARI", "✅ O'yin natijalari"):
         sent.add(f"espn-{mid}")
 
 
@@ -437,7 +464,8 @@ def post_upcoming(now, sent):
         if key:
             sent.add(key)  # сегодня матчей нет — не проверяем до завтра
         return
-    if post(items, "BUGUNGI O'YINLAR") and key:
+    items = select_main(items)
+    if post(items, "BUGUNGI ASOSIY O'YINLAR", "📅 Bugun bo'lib o'tadigan asosiy o'yinlar ro'yxati.", now) and key:
         sent.add(key)
 
 
