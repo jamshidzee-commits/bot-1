@@ -92,6 +92,63 @@ def get_events(code, date_string):
         return []
 
 
+def parse_events(comp, home, away, hg, ag):
+    """Gollar (kim, qaysi daqiqada) va qizil kartochkalar. Sariq kartochkalar olinmaydi."""
+    hid = str(home["team"].get("id", home.get("id", "")))
+    aid = str(away["team"].get("id", away.get("id", "")))
+    out = []
+    for d in comp.get("details", []) or []:
+        if d.get("shootout"):
+            continue
+        goal, red = bool(d.get("scoringPlay")), bool(d.get("redCard"))
+        if not (goal or red):
+            continue
+        tid = str((d.get("team") or {}).get("id", ""))
+        side = "home" if tid == hid else "away" if tid == aid else None
+        if not side:
+            continue
+        ath = (d.get("athletesInvolved") or [{}])[0]
+        clock = d.get("clock") or {}
+        out.append({"kind": "goal" if goal else "red", "side": side,
+                    "name": ath.get("shortName") or ath.get("displayName") or "",
+                    "min": clock.get("displayValue", ""), "t": clock.get("value", 0) or 0,
+                    "og": bool(d.get("ownGoal")), "pen": bool(d.get("penaltyKick"))})
+    out.sort(key=lambda e: e["t"])
+
+    def counts(ev):
+        return (sum(1 for e in ev if e["kind"] == "goal" and e["side"] == "home"),
+                sum(1 for e in ev if e["kind"] == "goal" and e["side"] == "away"))
+
+    # avtogol qaysi jamoaga yozilishi manbada turlicha bo'lishi mumkin — yakuniy hisob bilan solishtiramiz
+    if counts(out) != (hg, ag) and any(e["og"] for e in out):
+        flipped = [({**e, "side": "away" if e["side"] == "home" else "home"} if e["og"] else e) for e in out]
+        if counts(flipped) == (hg, ag):
+            out = flipped
+    return out
+
+
+def match_hero(events, hg, ag):
+    """O'yin qahramoni: g'olibning hal qiluvchi goli yoki 2+ gol urgan futbolchi. (ism, izoh) yoki None."""
+    goals = [e for e in events if e["kind"] == "goal"]
+    win = "home" if hg > ag else "away" if ag > hg else None
+    tally = {}
+    for e in goals:
+        if not e["og"] and (win is None or e["side"] == win):
+            tally[e["name"]] = tally.get(e["name"], 0) + 1
+    if tally:
+        name, n = max(tally.items(), key=lambda x: x[1])
+        if n >= 2 and name:
+            return name, "hat-trick" if n >= 3 else f"{n} gol"
+    if win:
+        loser = ag if win == "home" else hg
+        wg = [e for e in goals if e["side"] == win]
+        if len(wg) > loser:
+            e = wg[loser]  # g'olibning (raqib goli + 1)-gol — hal qiluvchi gol
+            if not e["og"] and e["name"]:
+                return e["name"], f"hal qiluvchi gol {e['min']}"
+    return None
+
+
 def parse_event(ev, upcoming=False):
     comp = ev["competitions"][0]
     status = comp["status"]["type"]
@@ -111,6 +168,11 @@ def parse_event(ev, upcoming=False):
         "link": link or f"https://www.espn.com/soccer/match/_/gameId/{ev['id']}",
         "home": home["team"]["displayName"],
         "away": away["team"]["displayName"],
+        "home_color": (home["team"].get("color"), home["team"].get("alternateColor")),
+        "away_color": (away["team"].get("color"), away["team"].get("alternateColor")),
+        "events": [] if upcoming else parse_events(comp, home, away,
+                                                   int(float(home.get("score", 0) or 0)),
+                                                   int(float(away.get("score", 0) or 0))),
         "home_logo": home["team"].get("logo"),
         "away_logo": away["team"].get("logo"),
         "hg": int(float(home.get("score", 0) or 0)),
@@ -121,21 +183,22 @@ def parse_event(ev, upcoming=False):
     }
 
 
-def get_logo(url):
+def get_logo(url, size=80):
     if not url:
         return None
-    if url in logo_cache:
-        return logo_cache[url]
+    key = (url, size)
+    if key in logo_cache:
+        return logo_cache[key]
     try:
         r = requests.get(url, timeout=10)
         r.raise_for_status()
         img = Image.open(BytesIO(r.content)).convert("RGBA")
-        img.thumbnail((80, 80), Image.Resampling.LANCZOS)
-        logo_cache[url] = img
+        img.thumbnail((size, size), Image.Resampling.LANCZOS)
+        logo_cache[key] = img
         return img
     except Exception as e:
         print("LOGO ERROR:", e)
-        logo_cache[url] = None
+        logo_cache[key] = None
         return None
 
 
@@ -427,6 +490,168 @@ def post(items, title, caption_text, dt=None):
     return ok_ids
 
 
+def _hex(c):
+    try:
+        c = c.lstrip("#")
+        return (int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+    except Exception:
+        return None
+
+
+def team_color(pair, fallback):
+    """Jamoa rangi: juda och/to'q rang o'tkazib yuboriladi (zaxira rang olinadi), hammasi shunday bo'lsa — qoraytiriladi."""
+    first = None
+    for c in pair:
+        rgb = _hex(c)
+        if not rgb:
+            continue
+        first = first or rgb
+        lum = 0.3 * rgb[0] + 0.59 * rgb[1] + 0.11 * rgb[2]
+        if 25 <= lum <= 200:
+            return rgb
+    if first:
+        lum = 0.3 * first[0] + 0.59 * first[1] + 0.11 * first[2]
+        return tuple(int(v * 0.55) for v in first) if lum > 200 else fallback
+    return fallback
+
+
+def _fit_name(d, text, max_w, size=30):
+    for sz in range(size, 19, -1):
+        f = F(sz)
+        if d.textlength(text, font=f) <= max_w:
+            return text, f
+    f = F(20)
+    while len(text) > 3 and d.textlength(text + "...", font=f) > max_w:
+        text = text[:-1]
+    return text + "...", f
+
+
+def _ball(d, cx, cy, r=12):
+    import math
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(250, 250, 250, 255), outline=(30, 30, 30, 255), width=2)
+    pts = [(cx + 5.5 * math.cos(-math.pi / 2 + i * 2 * math.pi / 5),
+            cy + 5.5 * math.sin(-math.pi / 2 + i * 2 * math.pi / 5)) for i in range(5)]
+    d.polygon(pts, fill=(30, 30, 30, 255))
+
+
+def make_result_card(label, m):
+    """Tugagan o'yin: fon — ikki jamoa qarama-qarshiligi (jamoa ranglari + katta logotiplar),
+    hisob, gollar (daqiqa bilan), qizil kartochkalar va o'yin qahramoni."""
+    events = m.get("events") or []
+    hero = match_hero(events, m["hg"], m["ag"]) if events else None
+    rows = max(sum(1 for e in events if e["side"] == "home"), sum(1 for e in events if e["side"] == "away"))
+    rows = min(rows, 8)
+    row_h = 46
+    top_zone = 640
+    panel_h = (70 + rows * row_h + 20) if events else 0
+    hero_h = 130 if hero else 0
+    foot_h = 170
+    H = top_zone + (panel_h + 30 if events else 0) + (hero_h + 30 if hero else 0) + foot_h
+
+    lc = team_color(m.get("home_color", (None, None)), (30, 90, 160))
+    rc = team_color(m.get("away_color", (None, None)), (160, 50, 50))
+    if sum(abs(a - b) for a, b in zip(lc, rc)) < 90:  # ranglar o'xshash bo'lsa
+        alt = team_color((m.get("away_color", (None, None))[1],), (160, 50, 50))
+        rc = alt if sum(abs(a - b) for a, b in zip(lc, alt)) >= 90 else (170, 50, 50)
+
+    SS = 1
+    img = Image.new("RGBA", (W, H), (5, 16, 29, 255))
+    # chap va o'ng yarim — diagonal chiziq bo'ylab
+    left = Image.new("RGBA", (W, H), lc + (255,))
+    right = Image.new("RGBA", (W, H), rc + (255,))
+    mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(mask).polygon([(0, 0), (610, 0), (470, H), (0, H)], fill=255)
+    img = Image.composite(left, right, mask)
+    # to'q qoplama (matn o'qilishi uchun) + pastga qarab to'qlashish
+    shade = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shade)
+    for yy in range(H):
+        a = int(120 + 100 * yy / H)
+        sd.line((0, yy, W, yy), fill=(4, 12, 22, min(a, 235)))
+    img = Image.alpha_composite(img, shade)
+    d = ImageDraw.Draw(img, "RGBA")
+    # katta xira logotiplar
+    for url, cx, side in ((m["home_logo"], 160, "l"), (m["away_logo"], 920, "r")):
+        big = get_logo(url, 520)
+        if big:
+            ghost = big.copy()
+            alpha = ghost.getchannel("A").point(lambda v: int(v * 0.16))
+            ghost.putalpha(alpha)
+            img.alpha_composite(ghost, (int(cx - ghost.width / 2), int(330 - ghost.height / 2)))
+    d = ImageDraw.Draw(img, "RGBA")
+    # urush chizig'i
+    d.line([(610, 0), (610 - 140 * top_zone / H, top_zone)], fill=(255, 255, 255, 80), width=5)
+
+    # sarlavha
+    d.ellipse((55, 38, 125, 108), fill=(10, 72, 112, 150), outline=(70, 185, 240, 230), width=3)
+    d.text((90, 73), "F", font=F(38, True), fill=(255, 255, 255, 255), anchor="mm")
+    d.text((148, 56), "FUTBOL OLAMI", font=F(38, True), fill=(245, 250, 255, 255), anchor="lm")
+    d.text((148, 94), "Futbol haqida hammasi!", font=F(21), fill=(150, 215, 250, 255), anchor="lm")
+    code = LEAGUE_CODE.get(label)
+    img.alpha_composite(make_flag(code), (55, 140))
+    d = ImageDraw.Draw(img, "RGBA")
+    d.text((130, 160), league_title(label), font=F(30, True), fill=(250, 252, 255, 255), anchor="lm")
+    dt = m["dt"]
+    d.text((W - 55, 160), f"{dt.strftime('%d.%m.%Y')} · {DAYS[dt.weekday()]}", font=F(24),
+           fill=(200, 225, 240, 255), anchor="rm")
+
+    # jamoalar, hisob
+    d.text((540, 235), "YAKUNLANDI", font=F(24, True), fill=(160, 220, 255, 255), anchor="mm")
+    for url, cx in ((m["home_logo"], 180), (m["away_logo"], 900)):
+        lg = get_logo(url, 190)
+        d.ellipse((cx - 105, 270, cx + 105, 480), fill=(5, 16, 29, 150), outline=(255, 255, 255, 70), width=3)
+        if lg:
+            img.alpha_composite(lg, (int(cx - lg.width / 2), int(375 - lg.height / 2)))
+    d = ImageDraw.Draw(img, "RGBA")
+    d.text((540, 372), f"{m['hg']} : {m['ag']}", font=F(112, True), fill=(255, 255, 255, 255), anchor="mm")
+    if m.get("note"):
+        d.text((540, 450), m["note"], font=F(22, True), fill=(150, 215, 250, 255), anchor="mm")
+    hn, hf = fit_text(d, m["home"], 330, 36, 22)
+    an, af = fit_text(d, m["away"], 330, 36, 22)
+    d.text((180, 520), hn, font=hf, fill=(255, 255, 255, 255), anchor="mm")
+    d.text((900, 520), an, font=af, fill=(255, 255, 255, 255), anchor="mm")
+
+    y = top_zone
+    if events:
+        d.rounded_rectangle((45, y, W - 45, y + panel_h), 20, fill=(4, 12, 22, 175), outline=(255, 255, 255, 60), width=2)
+        d.text((540, y + 34), "O'YIN VOQEALARI", font=F(24, True), fill=(160, 220, 255, 255), anchor="mm")
+        for side, x0 in (("home", 75), ("away", 575)):
+            evs = [e for e in events if e["side"] == side]
+            extra = max(0, len(evs) - 8)
+            for i, e in enumerate(evs[:8]):
+                cy = y + 70 + i * row_h + 23
+                if e["kind"] == "goal":
+                    _ball(d, x0 + 12, cy)
+                else:
+                    d.rounded_rectangle((x0 + 3, cy - 12, x0 + 21, cy + 12), 3, fill=(225, 30, 40, 255))
+                tail = " (pen.)" if e["pen"] else " (a.g.)" if e["og"] else ""
+                mn = e["min"]
+                mw = d.textlength(mn, font=F(28, True))
+                name, f = _fit_name(d, (e["name"] or "—") + tail, 400 - mw - 40)
+                d.text((x0 + 42, cy), name, font=f, fill=(250, 252, 255, 255), anchor="lm")
+                d.text((x0 + 42 + d.textlength(name, font=f) + 14, cy), mn, font=F(28, True),
+                       fill=(255, 215, 90, 255) if e["kind"] == "goal" else (255, 120, 120, 255), anchor="lm")
+            if extra:
+                d.text((x0 + 42, y + 70 + 8 * row_h + 12), f"+{extra}", font=F(22), fill=(200, 225, 240, 255), anchor="lm")
+        y += panel_h + 30
+    if hero:
+        d.rounded_rectangle((45, y, W - 45, y + hero_h), 22, fill=(70, 50, 8, 230), outline=(255, 205, 70, 255), width=3)
+        d.polygon(_star(120, y + hero_h / 2, 36), fill=(255, 205, 70, 255))
+        d.text((190, y + 38), "O'YIN QAHRAMONI", font=F(22, True), fill=(255, 215, 120, 255), anchor="lm")
+        hname, hf2 = _fit_name(d, hero[0], 520, 42)
+        d.text((190, y + 78), hname, font=F(hf2.size, True), fill=(255, 255, 255, 255), anchor="lm")
+        d.text((W - 75, y + 78), hero[1], font=F(28, True), fill=(255, 215, 90, 255), anchor="rm")
+        y += hero_h + 30
+
+    fy = H - foot_h + 20
+    d.line((60, fy, W - 60, fy), fill=(255, 255, 255, 90), width=2)
+    _, handle = channel_info()
+    d.text((70, fy + 40), "Futbol bizni birlashtiradi!", font=F(33, True), fill=(238, 248, 255, 255), anchor="lm")
+    tag = f"Telegram: {handle}" if handle else "Futbol olami  •  Futbol haqida hammasi!"
+    d.text((70, fy + 98), tag, font=F(32, True), fill=(110, 205, 255, 255), anchor="lm")
+    return img.convert("RGB")
+
+
 def league_title(label):
     return label.title().replace("Uefa", "UEFA")
 
@@ -471,7 +696,7 @@ def post_card(label, m, cards, videos):
     c = {"home": m["home"], "away": m["away"], "hg": m["hg"], "ag": m["ag"],
          "league": label, "espn": m["link"]}
     video = videos.get(m["id"])
-    img = make_list_image("O'YIN NATIJASI", m["dt"], [(label, m)])
+    img = make_result_card(label, m)
     ids = send_photo(img, card_caption(c, video))
     if ids and cards is not None:
         cards[m["id"]] = {**c, "ids": ids, "video": bool(video)}
