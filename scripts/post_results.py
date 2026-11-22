@@ -142,7 +142,7 @@ def draw_logo(img, url, cx, cy, size=64):
         img.alpha_composite(p, (int(cx - p.width / 2), int(cy - p.height / 2)))
 
 
-def fit_text(d, text, max_width, start=24, minimum=15):
+def fit_text(d, text, max_width, start=31, minimum=20):
     text = SHORT.get(text, text)
     for size in range(start, minimum - 1, -1):
         f = F(size, True)
@@ -162,28 +162,26 @@ def fit_text(d, text, max_width, start=24, minimum=15):
 
 def draw_match(img, y, m):
     d = ImageDraw.Draw(img, "RGBA")
-    hn, hf = fit_text(d, m["home"], 225)
-    an, af = fit_text(d, m["away"], 260)
+    hn, hf = fit_text(d, m["home"], 232)
+    an, af = fit_text(d, m["away"], 320)
+    cy = y + 60
 
-    d.rounded_rectangle((45, y, W - 45, y + 116), 18, fill=(6, 27, 44, 250),
+    d.rounded_rectangle((45, y, W - 45, y + 124), 18, fill=(6, 27, 44, 250),
                         outline=(38, 120, 165, 220), width=2)
-    d.text((70, y + 43), m["dt"].strftime("%H:%M"), font=F(25, True), fill=(240, 248, 252, 255))
+    d.text((66, cy), m["dt"].strftime("%H:%M"), font=F(30, True), fill=(240, 248, 252, 255), anchor="lm")
 
-    hb = d.textbbox((0, 0), hn, font=hf)
-    d.text((405 - (hb[2] - hb[0]), y + 44), hn, font=hf, fill=(248, 251, 255, 255))
-    draw_logo(img, m["home_logo"], 440, y + 58)
-    draw_logo(img, m["away_logo"], 640, y + 58)
-    d.text((680, y + 44), an, font=af, fill=(248, 251, 255, 255))
+    d.text((394, cy), hn, font=hf, fill=(248, 251, 255, 255), anchor="rm")
+    draw_logo(img, m["home_logo"], 440, cy, 68)
+    draw_logo(img, m["away_logo"], 640, cy, 68)
+    d.text((682, cy), an, font=af, fill=(248, 251, 255, 255), anchor="lm")
 
-    d.rounded_rectangle((490, y + 27, 590, y + 88), 13, fill=(8, 58, 84, 255),
+    d.rounded_rectangle((488, y + 24, 592, y + 90), 13, fill=(8, 58, 84, 255),
                         outline=(55, 160, 215, 230), width=2)
     center = "VS" if m.get("upcoming") else f"{m['hg']} : {m['ag']}"
-    box = d.textbbox((0, 0), center, font=F(24, True))
-    d.text((540 - (box[2] - box[0]) / 2, y + 41), center, font=F(24, True), fill=(255, 255, 255, 255))
+    d.text((540, y + 57), center, font=F(30, True), fill=(255, 255, 255, 255), anchor="mm")
 
     if m["note"]:
-        nb = d.textbbox((0, 0), m["note"], font=F(13, True))
-        d.text((540 - (nb[2] - nb[0]) / 2, y + 94), m["note"], font=F(13, True), fill=(130, 205, 245, 255))
+        d.text((540, y + 108), m["note"], font=F(17, True), fill=(130, 205, 245, 255), anchor="mm")
 
 
 def make_image(title, dt, groups, page_no, total_pages):
@@ -201,25 +199,25 @@ def make_image(title, dt, groups, page_no, total_pages):
     d.ellipse((55, 42, 155, 142), fill=(10, 72, 112, 110), outline=(70, 185, 240, 230), width=3)
     d.text((82, 59), "F", font=F(50, True), fill=(255, 255, 255, 255))
     d.text((185, 55), "FUTBOL OLAMI", font=F(48, True), fill=(245, 250, 255, 255))
-    d.text((188, 112), "Futbol haqida hammasi!", font=F(21), fill=(130, 205, 245, 255))
+    d.text((188, 112), "Futbol haqida hammasi!", font=F(26), fill=(130, 205, 245, 255))
 
     d.rounded_rectangle((55, 180, 205, 320), 20, fill=(245, 249, 252, 255))
     d.rounded_rectangle((55, 180, 205, 224), 20, fill=(235, 55, 55, 255))
     d.rectangle((55, 205, 205, 224), fill=(235, 55, 55, 255))
-    d.text((78, 186), MONTHS[dt.month], font=F(17, True), fill=(255, 255, 255, 255))
+    d.text((130, 203), MONTHS[dt.month], font=F(21, True), anchor="mm", fill=(255, 255, 255, 255))
     d.text((88, 228), dt.strftime("%d"), font=F(58, True), fill=(8, 25, 40, 255))
-    d.text((245, 188), title, font=F(33, True), fill=(248, 252, 255, 255))
-    d.text((248, 245), f"{dt.strftime('%d.%m.%Y')} | {DAYS[dt.weekday()]}", font=F(19), fill=(145, 200, 230, 255))
+    d.text((245, 184), title, font=F(40, True), fill=(248, 252, 255, 255))
+    d.text((248, 250), f"{dt.strftime('%d.%m.%Y')} | {DAYS[dt.weekday()]}", font=F(25), fill=(145, 200, 230, 255))
 
     if total_pages > 1:
         d.rounded_rectangle((900, 188, 1018, 242), 16, fill=(7, 105, 155, 235))
-        d.text((926, 200), f"{page_no}/{total_pages}", font=F(20, True), fill=(255, 255, 255, 255))
+        d.text((959, 215), f"{page_no}/{total_pages}", font=F(26, True), anchor="mm", fill=(255, 255, 255, 255))
 
     y = 355
     for league, matches in groups:
         d.rounded_rectangle((45, y, W - 45, y + 70), 18, fill=(7, 39, 62, 255),
                             outline=(45, 140, 195, 230), width=2)
-        d.text((70, y + 20), league, font=F(23, True), fill=(248, 252, 255, 255))
+        d.text((70, y + 35), league, font=F(29, True), anchor="lm", fill=(248, 252, 255, 255))
         y += 88
         for m in matches:
             draw_match(img, y, m)
@@ -228,8 +226,8 @@ def make_image(title, dt, groups, page_no, total_pages):
 
     fy = height - 145
     d.line((60, fy, W - 60, fy), fill=(55, 135, 175, 150), width=2)
-    d.text((70, fy + 25), "Futbol bizni birlashtiradi!", font=F(27, True), fill=(238, 248, 255, 255))
-    d.text((70, fy + 72), "Futbol olami  •  Futbol haqida hammasi!", font=F(20), fill=(125, 195, 225, 255))
+    d.text((70, fy + 25), "Futbol bizni birlashtiradi!", font=F(33, True), fill=(238, 248, 255, 255))
+    d.text((70, fy + 78), "Futbol olami  •  Futbol haqida hammasi!", font=F(25), fill=(125, 195, 225, 255))
     return img.convert("RGB")
 
 
