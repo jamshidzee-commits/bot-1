@@ -184,6 +184,102 @@ def draw_match(img, y, m):
         d.text((540, y + 108), m["note"], font=F(17, True), fill=(130, 205, 245, 255), anchor="mm")
 
 
+LEAGUE_CODE = {name: code for code, name in LEAGUES.items()}
+
+# (fon rangi, chiziq rangi) — har bir davlat uchun o'z tusi
+LEAGUE_STYLE = {
+    "eng.1": ((48, 20, 72), (160, 100, 220)),
+    "esp.1": ((70, 18, 26), (230, 75, 80)),
+    "ita.1": ((14, 60, 36), (60, 195, 115)),
+    "ger.1": ((58, 48, 8), (230, 190, 40)),
+    "fra.1": ((12, 38, 88), (75, 135, 235)),
+    "por.1": ((12, 58, 64), (50, 195, 205)),
+    "ned.1": ((74, 40, 8), (250, 145, 40)),
+    "tur.1": ((82, 12, 24), (240, 65, 75)),
+    "ksa.1": ((14, 72, 52), (55, 205, 145)),
+}
+DEFAULT_STYLE = ((20, 32, 100), (115, 145, 255))
+
+FLAG_W, FLAG_H = 60, 40
+
+
+def _star(cx, cy, r, points=5):
+    import math
+    pts = []
+    for i in range(points * 2):
+        ang = -math.pi / 2 + i * math.pi / points
+        rr = r if i % 2 == 0 else r * 0.4
+        pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
+    return pts
+
+
+def make_flag(code):
+    """Davlat bayrog'ini kod bilan chizadi (tashqi rasm kerak emas)."""
+    import math
+    k = 4
+    w, h = FLAG_W * k, FLAG_H * k
+    fl = Image.new("RGBA", (w, h), (255, 255, 255, 255))
+    d = ImageDraw.Draw(fl)
+
+    def vert(cols, parts=None):
+        parts = parts or [1] * len(cols)
+        x, tot = 0, sum(parts)
+        for c, pt in zip(cols, parts):
+            nx = x + w * pt / tot
+            d.rectangle((round(x), 0, round(nx), h), fill=c)
+            x = nx
+
+    def horiz(cols, parts=None):
+        parts = parts or [1] * len(cols)
+        y, tot = 0, sum(parts)
+        for c, pt in zip(cols, parts):
+            ny = y + h * pt / tot
+            d.rectangle((0, round(y), w, round(ny)), fill=c)
+            y = ny
+
+    if code == "fra.1":
+        vert([(0, 85, 164), (255, 255, 255), (239, 65, 53)])
+    elif code == "ita.1":
+        vert([(0, 146, 70), (255, 255, 255), (206, 43, 55)])
+    elif code == "ger.1":
+        horiz([(0, 0, 0), (221, 0, 0), (255, 206, 0)])
+    elif code == "ned.1":
+        horiz([(174, 28, 40), (255, 255, 255), (33, 71, 139)])
+    elif code == "esp.1":
+        horiz([(170, 21, 27), (241, 191, 0), (170, 21, 27)], [1, 2, 1])
+    elif code == "por.1":
+        vert([(0, 102, 0), (255, 0, 0)], [2, 3])
+        cx, cy, r = w * 0.4, h / 2, h * 0.2
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(255, 205, 0), outline=(255, 255, 255), width=k)
+    elif code == "tur.1":
+        d.rectangle((0, 0, w, h), fill=(227, 10, 23))
+        r1, r2 = h * 0.27, h * 0.21
+        d.ellipse((w * 0.36 - r1, h / 2 - r1, w * 0.36 + r1, h / 2 + r1), fill=(255, 255, 255))
+        d.ellipse((w * 0.42 - r2, h / 2 - r2, w * 0.42 + r2, h / 2 + r2), fill=(227, 10, 23))
+        d.polygon(_star(w * 0.58, h / 2, h * 0.11), fill=(255, 255, 255))
+    elif code == "ksa.1":
+        d.rectangle((0, 0, w, h), fill=(0, 106, 78))
+        d.rectangle((w * 0.2, h * 0.62, w * 0.8, h * 0.68), fill=(255, 255, 255))
+        d.rectangle((w * 0.3, h * 0.3, w * 0.7, h * 0.38), fill=(255, 255, 255))
+    elif code == "eng.1":
+        d.rectangle((0, 0, w, h), fill=(255, 255, 255))
+        d.rectangle((w * 0.42, 0, w * 0.58, h), fill=(206, 17, 36))
+        d.rectangle((0, h * 0.4, w, h * 0.6), fill=(206, 17, 36))
+    else:  # UEFA va boshqalar: ko'k fon, yulduzlar halqasi
+        d.rectangle((0, 0, w, h), fill=(0, 51, 153))
+        for i in range(12):
+            a = i * math.pi / 6
+            cx, cy = w / 2 + h * 0.32 * math.cos(a), h / 2 + h * 0.32 * math.sin(a)
+            d.ellipse((cx - 2 * k, cy - 2 * k, cx + 2 * k, cy + 2 * k), fill=(255, 215, 0))
+
+    fl = fl.resize((FLAG_W, FLAG_H), Image.Resampling.LANCZOS)
+    mask = Image.new("L", (FLAG_W * k, FLAG_H * k), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, FLAG_W * k - 1, FLAG_H * k - 1), 8 * k, fill=255)
+    mask = mask.resize((FLAG_W, FLAG_H), Image.Resampling.LANCZOS)
+    fl.putalpha(mask)
+    return fl
+
+
 def make_image(title, dt, groups, page_no, total_pages):
     count = sum(len(ms) for _, ms in groups)
     height = 430 + len(groups) * 100 + count * 150 + 160
@@ -215,9 +311,12 @@ def make_image(title, dt, groups, page_no, total_pages):
 
     y = 355
     for league, matches in groups:
-        d.rounded_rectangle((45, y, W - 45, y + 70), 18, fill=(7, 39, 62, 255),
-                            outline=(45, 140, 195, 230), width=2)
-        d.text((70, y + 35), league, font=F(29, True), anchor="lm", fill=(248, 252, 255, 255))
+        lcode = LEAGUE_CODE.get(league)
+        bg, line = LEAGUE_STYLE.get(lcode, DEFAULT_STYLE)
+        d.rounded_rectangle((45, y, W - 45, y + 70), 18, fill=bg + (255,),
+                            outline=line + (235,), width=2)
+        img.alpha_composite(make_flag(lcode), (66, y + 35 - FLAG_H // 2))
+        d.text((66 + FLAG_W + 20, y + 35), league, font=F(29, True), anchor="lm", fill=(248, 252, 255, 255))
         y += 88
         for m in matches:
             draw_match(img, y, m)
