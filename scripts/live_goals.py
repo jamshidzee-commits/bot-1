@@ -1,6 +1,6 @@
 """Jonli gollar: top klublar o'yinida gol urilsa — darhol rasm (LIVE, daqiqa, joriy hisob).
 
-Har 2 daqiqada ishga tushadi. Har 10 daqiqada barcha ligalar skanerlanadi (qaysi top o'yinlar
+Har daqiqada ishga tushadi. Har 10 daqiqada barcha ligalar skanerlanadi (qaysi top o'yinlar
 ketayotgani/boshlanayotganini bilish uchun), oraliqda faqat shu ligalar so'raladi.
 """
 import re

@@ -1,7 +1,7 @@
 name: Futbol olami bot
 
 # Работает сам по кругу: один запуск длится ~55 минут, в конце сам запускает следующий.
-# Внутри: jonli gollar — каждые 2 минуты, кнопки "Kanalga" — каждую минуту, результаты — каждые 10 минут,
+# Внутри: jonli gollar — каждую минуту, кнопки "Kanalga" — каждую минуту, результаты — каждые 10 минут,
 # обзоры и новости — каждые 30 минут. Расписание раз в час — запасной вариант,
 # если цепочка вдруг прервётся.
 
@@ -62,9 +62,7 @@ jobs:
             if [ $((m % 10)) -eq 0 ]; then
               python scripts/post_results.py || echo "results xato"
             fi
-            if [ $((m % 2)) -eq 0 ]; then
-              python scripts/live_goals.py || echo "live xato"
-            fi
+            python scripts/live_goals.py || echo "live xato"
             save || echo "save xato"
             m=$((m + 1))
             sleep 60
