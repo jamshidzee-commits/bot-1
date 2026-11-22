@@ -1121,6 +1121,11 @@ def main():
     post_finished(now, sent, cards)
     post_upcoming(now, sent)
     post_lineups(now, sent)
+    try:
+        from standings import post_tables
+        post_tables(now, sent)
+    except Exception as e:
+        print("TABLE ERROR", e)
     if not TEST_MODE:
         update_cards(cards)
         save_sent(sent)
