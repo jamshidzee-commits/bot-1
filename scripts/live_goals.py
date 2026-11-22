@@ -63,6 +63,23 @@ def post_goal(label, m, g, hg, ag, upto, minute):
     return bool(send_photo(img, caption(label, snap, g, minute)))
 
 
+def post_red(label, m, e, hg, ag, upto):
+    """Qizil kartochka: hisob o'zgarmaydi, lekin rasmda qizil plashka."""
+    snap = dict(m, hg=hg, ag=ag, events=m["events"][:upto])
+    team = m["home"] if e["side"] == "home" else m["away"]
+    live = {"min": e["min"], "title": f"QIZIL KARTOCHKA · {team.upper()}", "name": e["name"] or "Chetlatildi", "red": True}
+    img = make_result_card(label, snap, live)
+    ee = html.escape
+    link, _ = channel_info()
+    cap = [f"🔴 <b>LIVE · {ee(e['min'], quote=False)}</b>",
+           f"🟥 <b>QIZIL KARTOCHKA!</b> {ee(e['name'] or '', quote=False)} ({ee(team, quote=False)})",
+           f"⚽ <b>{ee(m['home'], quote=False)} {hg}:{ag} {ee(m['away'], quote=False)}</b>",
+           f"🏆 {ee(league_title(label), quote=False)}",
+           f'\n🔗 <a href="{ee(m["link"])}">ESPN</a>',
+           f'\n<a href="{ee(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n<b>FUTBOL OLAMI</b>"]
+    return bool(send_photo(img, "\n".join(cap)))
+
+
 def process_live(label, ev, state):
     m = parse_event(ev, live=True)
     if not m:
@@ -77,6 +94,19 @@ def process_live(label, ev, state):
     events = m["events"]
     hg = ag = 0
     for idx, e in enumerate(events):
+        if e["kind"] == "red":
+            rkey = f"red|{e['side']}|{e['name']}|{e['min']}"
+            if rkey in rec["seen"]:
+                continue
+            rec["seen"].append(rkey)
+            rec["reds"] = rec.get("reds", 0) + 1
+            if first_sight and now_min - minute_of(e["min"]) > FIRST_SIGHT_WINDOW_MIN:
+                continue
+            print("RED:", m["home"], m["away"], e["name"], e["min"])
+            if not TEST_MODE:
+                post_red(label, m, e, hg, ag, idx + 1)
+                time.sleep(3.5)
+            continue
         if e["kind"] != "goal":
             continue
         hg, ag = (hg + 1, ag) if e["side"] == "home" else (hg, ag + 1)
@@ -94,7 +124,7 @@ def process_live(label, ev, state):
             post_goal(label, m, e, hg, ag, idx + 1, e["min"])
             time.sleep(3.5)
     # tafsilotsiz gol: hisob oshgan, lekin voqea ro'yxatida yo'q (2 ta ketma-ket so'rovdan keyin yuboriladi)
-    accounted = len(rec["seen"]) + rec["generic"]
+    accounted = sum(1 for k in rec["seen"] if not k.startswith("red|")) + rec["generic"]
     total = m["hg"] + m["ag"]
     if total > accounted and not first_sight:
         rec["gap"] += 1

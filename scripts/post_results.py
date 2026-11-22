@@ -695,12 +695,17 @@ def make_result_card(label, m, live=None):
                 d.text((x0 + 42, y + 70 + 8 * row_h + 12), f"+{extra}", font=F(22), fill=(200, 225, 240, 255), anchor="lm")
         y += panel_h + 30
     if hero:
-        d.rounded_rectangle((45, y, W - 45, y + hero_h), 22, fill=(70, 50, 8, 230), outline=(255, 205, 70, 255), width=3)
-        d.polygon(_star(120, y + hero_h / 2, 36), fill=(255, 205, 70, 255))
-        d.text((190, y + 38), hero_title, font=F(22, True), fill=(255, 215, 120, 255), anchor="lm")
+        red = bool(live and live.get("red"))
+        d.rounded_rectangle((45, y, W - 45, y + hero_h), 22, fill=(80, 10, 14, 235) if red else (70, 50, 8, 230),
+                            outline=(235, 45, 55, 255) if red else (255, 205, 70, 255), width=3)
+        if red:
+            d.rounded_rectangle((95, y + hero_h / 2 - 28, 143, y + hero_h / 2 + 28), 6, fill=(225, 30, 40, 255))
+        else:
+            d.polygon(_star(120, y + hero_h / 2, 36), fill=(255, 205, 70, 255))
+        d.text((190, y + 38), hero_title, font=F(22, True), fill=(255, 150, 150, 255) if red else (255, 215, 120, 255), anchor="lm")
         hname, hf2 = _fit_name(d, hero[0], 520, 42)
         d.text((190, y + 78), hname, font=F(hf2.size, True), fill=(255, 255, 255, 255), anchor="lm")
-        d.text((W - 75, y + 78), hero[1], font=F(28, True), fill=(255, 215, 90, 255), anchor="rm")
+        d.text((W - 75, y + 78), hero[1], font=F(28, True), fill=(255, 150, 150, 255) if red else (255, 215, 90, 255), anchor="rm")
         y += hero_h + 30
 
     fy = H - foot_h + 20
