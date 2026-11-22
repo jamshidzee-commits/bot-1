@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import html
 import requests
 from io import BytesIO
@@ -15,6 +16,8 @@ GROUP_ID = os.environ.get("GROUP_ID", "").strip()  # masalan @uzb_fut_fan_club
 TASHKENT = ZoneInfo("Asia/Tashkent")
 ESPN = "https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/scoreboard"
 SENT_FILE = "sent.json"
+CARDS_FILE = "cards.json"
+HIGHLIGHTS_FILE = "highlights.json"
 W = 1080
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -101,9 +104,11 @@ def parse_event(ev, upcoming=False):
     teams = {c["homeAway"]: c for c in comp["competitors"]}
     home, away = teams["home"], teams["away"]
     dt = datetime.fromisoformat(ev["date"].replace("Z", "+00:00")).astimezone(TASHKENT)
+    link = next((l["href"] for l in ev.get("links", []) if "summary" in l.get("rel", []) and l.get("href")), None)
     return {
         "id": ev["id"],
         "dt": dt,
+        "link": link or f"https://www.espn.com/soccer/match/_/gameId/{ev['id']}",
         "home": home["team"]["displayName"],
         "away": away["team"]["displayName"],
         "home_logo": home["team"].get("logo"),
@@ -372,6 +377,7 @@ def make_list_image(title, dt, rows, page_no=1, total_pages=1):
 
 
 def _send_photo_to(chat_id, data_bytes, caption):
+    """Yuborilgan xabar id sini qaytaradi (xato bo'lsa None)."""
     r = requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
         data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
@@ -379,17 +385,26 @@ def _send_photo_to(chat_id, data_bytes, caption):
         timeout=30,
     )
     print("TELEGRAM", chat_id, ":", r.status_code, r.text[:200])
-    return r.ok
+    try:
+        return r.json()["result"]["message_id"] if r.ok else None
+    except Exception:
+        return None
 
 
 def send_photo(img, caption):
+    """{chat: message_id}; kanalga yuborilmasa — bo'sh dict."""
     buf = BytesIO()
     img.save(buf, format="JPEG", quality=92, optimize=True)
     data_bytes = buf.getvalue()
-    ok = _send_photo_to(CHANNEL_ID, data_bytes, caption)
-    if ok and GROUP_ID:
-        _send_photo_to(GROUP_ID, data_bytes, caption)
-    return ok
+    ids = {}
+    mid = _send_photo_to(CHANNEL_ID, data_bytes, caption)
+    if mid:
+        ids[CHANNEL_ID] = mid
+        if GROUP_ID:
+            gid = _send_photo_to(GROUP_ID, data_bytes, caption)
+            if gid:
+                ids[GROUP_ID] = gid
+    return ids
 
 
 def post(items, title, caption_text, dt=None):
@@ -412,7 +427,79 @@ def post(items, title, caption_text, dt=None):
     return ok_ids
 
 
-def post_finished(now, sent):
+def league_title(label):
+    return label.title().replace("Uefa", "UEFA")
+
+
+def load_cards():
+    try:
+        with open(CARDS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_cards(cards):
+    with open(CARDS_FILE, "w", encoding="utf-8") as f:
+        json.dump(dict(list(cards.items())[-200:]), f, ensure_ascii=False)
+
+
+def load_videos():
+    """highlights.py topgan rasmiy YouTube sharhlari: {o'yin id: havola}."""
+    try:
+        with open(HIGHLIGHTS_FILE, encoding="utf-8") as f:
+            return json.load(f).get("videos", {})
+    except Exception:
+        return {}
+
+
+def card_caption(c, video=None):
+    e = html.escape
+    lines = [f"✅ <b>{e(c['home'], quote=False)} {c['hg']}:{c['ag']} {e(c['away'], quote=False)}</b>",
+             f"🏆 {e(league_title(c['league']), quote=False)}"]
+    links = [f'🔗 <a href="{e(c["espn"])}">ESPN</a>']
+    if video:
+        links.append(f'▶️ <a href="{e(video)}">Obzor</a>')
+    lines.append("\n" + "  ·  ".join(links))
+    link, _ = channel_info()
+    lines.append(f'\n<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n<b>FUTBOL OLAMI</b>")
+    return "\n".join(lines)
+
+
+def post_card(label, m, cards, videos):
+    """Tugagan o'yin: bitta rasm (hisob) + pastda ESPN va (bo'lsa) YouTube sharh havolasi."""
+    c = {"home": m["home"], "away": m["away"], "hg": m["hg"], "ag": m["ag"],
+         "league": label, "espn": m["link"]}
+    video = videos.get(m["id"])
+    img = make_list_image("O'YIN NATIJASI", m["dt"], [(label, m)])
+    ids = send_photo(img, card_caption(c, video))
+    if ids and cards is not None:
+        cards[m["id"]] = {**c, "ids": ids, "video": bool(video)}
+    return bool(ids)
+
+
+def update_cards(cards):
+    """Sharh keyinroq chiqadi: topilgach, avval yuborilgan rasm ostiga 'Obzor' havolasi qo'shiladi."""
+    videos = load_videos()
+    for mid, c in cards.items():
+        url = videos.get(mid)
+        if c.get("video") or not url:
+            continue
+        cap = card_caption(c, url)
+        done = False
+        for chat, msg_id in c["ids"].items():
+            r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageCaption",
+                              data={"chat_id": chat, "message_id": msg_id, "caption": cap, "parse_mode": "HTML"},
+                              timeout=30)
+            print("EDIT CAPTION", chat, msg_id, r.status_code, r.text[:120])
+            if r.ok or "not modified" in r.text:
+                done = True
+            time.sleep(1)
+        if done:
+            c["video"] = True
+
+
+def post_finished(now, sent, cards):
     """Итоги матчей за вчера и сегодня — только те, что ещё не отправлены."""
     days_back = 7 if TEST_MODE else 1
     dates = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days_back, -1, -1)]
@@ -430,15 +517,22 @@ def post_finished(now, sent):
 
     if TEST_MODE:
         print("TEST MODE: sending last 3 finished matches")
-        post(finished[-3:], "O'YIN NATIJALARI", "✅ O'yin natijalari")
+        videos = load_videos()
+        for label, m in finished[-3:]:
+            post_card(label, m, None, videos)
+            time.sleep(3.5)
         return
 
     fresh = [(l, m) for l, m in finished if f"espn-{m['id']}" not in sent]
     if not fresh:
         print("NOTHING NEW (results)")
         return
-    for mid in post(fresh, "O'YIN NATIJALARI", "✅ O'yin natijalari"):
-        sent.add(f"espn-{mid}")
+    videos = load_videos()
+    for i, (label, m) in enumerate(fresh):
+        if i:
+            time.sleep(3.5)  # Telegram limiti: ~20 xabar/daqiqa
+        if post_card(label, m, cards, videos):
+            sent.add(f"espn-{m['id']}")
 
 
 def post_upcoming(now, sent):
@@ -472,10 +566,13 @@ def post_upcoming(now, sent):
 def main():
     now = datetime.now(TASHKENT)
     sent = load_sent()
-    post_finished(now, sent)
+    cards = load_cards()
+    post_finished(now, sent, cards)
     post_upcoming(now, sent)
     if not TEST_MODE:
+        update_cards(cards)
         save_sent(sent)
+        save_cards(cards)
 
 
 if __name__ == "__main__":
