@@ -167,6 +167,7 @@ def main():
     full = time.time() - state.get("scan_ts", 0) > SCAN_EVERY_SEC
     targets = [(c, d) for c in LEAGUES for d in dates] if full else [tuple(x) for x in state.get("watch", [])]
     watch = set()
+    dbg = []
     for code, d in targets:
         for ev in get_events(code, d):
             try:
@@ -174,6 +175,8 @@ def main():
             except Exception as e:
                 print("PARSE ERROR", ev.get("id"), e)
                 continue
+            if b["state"] == "in":
+                dbg.append(f"{code}|{b['home']}-{b['away']}|top={is_top(b, code)}")
             if not is_top(b, code):
                 continue
             mins = (b["dt"] - now).total_seconds() / 60
@@ -184,6 +187,7 @@ def main():
                     process_live(LEAGUES[code], ev, state)
                 except Exception as e:
                     print("LIVE ERROR", ev.get("id"), e)
+    state["dbg"] = {"ts": datetime.now(TASHKENT).strftime("%H:%M:%S"), "full": full, "targets": len(targets), "in_play": dbg}
     if full:
         state["watch"] = sorted(watch)
         state["scan_ts"] = time.time()
