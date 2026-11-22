@@ -1,7 +1,7 @@
 name: Futbol olami bot
 
 # Работает сам по кругу: один запуск длится ~55 минут, в конце сам запускает следующий.
-# Внутри: кнопки "Kanalga" — каждую минуту, результаты — каждые 10 минут,
+# Внутри: jonli gollar — каждые 2 минуты, кнопки "Kanalga" — каждую минуту, результаты — каждые 10 минут,
 # обзоры и новости — каждые 30 минут. Расписание раз в час — запасной вариант,
 # если цепочка вдруг прервётся.
 
@@ -42,8 +42,8 @@ jobs:
           git config user.name "futbol-olami-bot"
           git config user.email "bot@users.noreply.github.com"
           save() {
-            touch sent.json highlights.json cards.json
-            git add sent.json highlights.json cards.json
+            touch sent.json highlights.json cards.json live.json
+            git add sent.json highlights.json cards.json live.json
             git diff --cached --quiet && return 0
             git commit -q -m "update state"
             for i in 1 2 3 4 5; do
@@ -61,6 +61,9 @@ jobs:
             fi
             if [ $((m % 10)) -eq 0 ]; then
               python scripts/post_results.py || echo "results xato"
+            fi
+            if [ $((m % 2)) -eq 0 ]; then
+              python scripts/live_goals.py || echo "live xato"
             fi
             save || echo "save xato"
             m=$((m + 1))

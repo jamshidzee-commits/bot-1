@@ -153,10 +153,13 @@ def match_hero(events, hg, ag):
     return None
 
 
-def parse_event(ev, upcoming=False):
+def parse_event(ev, upcoming=False, live=False):
     comp = ev["competitions"][0]
     status = comp["status"]["type"]
-    if upcoming:
+    if live:
+        if status.get("state") != "in":
+            return None
+    elif upcoming:
         # Только матчи, которые ещё не начались
         if status.get("state") != "pre":
             return None
@@ -184,6 +187,7 @@ def parse_event(ev, upcoming=False):
         "note": {"STATUS_FINAL_AET": "QO'SHIMCHA VAQT",
                  "STATUS_FINAL_PEN": "PENALTILAR"}.get(status.get("name"), ""),
         "upcoming": upcoming,
+        "clock": comp["status"].get("displayClock", ""),
     }
 
 
@@ -600,11 +604,15 @@ def _clash_bg(m, H, top_zone):
     return img
 
 
-def make_result_card(label, m):
+def make_result_card(label, m, live=None):
     """Tugagan o'yin: fon — ikki jamoa qarama-qarshiligi (jamoa ranglari + katta logotiplar),
     hisob, gollar (daqiqa bilan), qizil kartochkalar va o'yin qahramoni."""
     events = m.get("events") or []
-    hero = match_hero(events, m["hg"], m["ag"]) if events else None
+    hero_title = "O'YIN QAHRAMONI"
+    if live:  # jonli gol: pastdagi plashkada gol urgan futbolchi
+        hero, hero_title = (live.get("name") or "Gol urildi", live.get("min", "")), live.get("title", "GOL!")
+    else:
+        hero = match_hero(events, m["hg"], m["ag"]) if events else None
     rows = max(sum(1 for e in events if e["side"] == "home"), sum(1 for e in events if e["side"] == "away"))
     rows = min(rows, 8)
     row_h = 46
@@ -631,7 +639,12 @@ def make_result_card(label, m):
            fill=(200, 225, 240, 255), anchor="rm")
 
     # jamoalar, hisob
-    d.text((540, 235), "YAKUNLANDI", font=F(24, True), fill=(160, 220, 255, 255), anchor="mm")
+    if live:
+        d.rounded_rectangle((420, 214, 660, 256), 21, fill=(215, 30, 45, 255))
+        d.ellipse((440, 229, 454, 243), fill=(255, 255, 255, 255))
+        d.text((552, 235), f"LIVE  {live.get('min', '')}", font=F(26, True), fill=(255, 255, 255, 255), anchor="mm")
+    else:
+        d.text((540, 235), "YAKUNLANDI", font=F(24, True), fill=(160, 220, 255, 255), anchor="mm")
     for url, cx, nm in ((m["home_logo"], 180, m["home"]), (m["away_logo"], 900, m["away"])):
         lg = get_logo(url, 190)
         d.ellipse((cx - 105, 270, cx + 105, 480), fill=(5, 16, 29, 150), outline=(255, 255, 255, 70), width=3)
@@ -674,7 +687,7 @@ def make_result_card(label, m):
     if hero:
         d.rounded_rectangle((45, y, W - 45, y + hero_h), 22, fill=(70, 50, 8, 230), outline=(255, 205, 70, 255), width=3)
         d.polygon(_star(120, y + hero_h / 2, 36), fill=(255, 205, 70, 255))
-        d.text((190, y + 38), "O'YIN QAHRAMONI", font=F(22, True), fill=(255, 215, 120, 255), anchor="lm")
+        d.text((190, y + 38), hero_title, font=F(22, True), fill=(255, 215, 120, 255), anchor="lm")
         hname, hf2 = _fit_name(d, hero[0], 520, 42)
         d.text((190, y + 78), hname, font=F(hf2.size, True), fill=(255, 255, 255, 255), anchor="lm")
         d.text((W - 75, y + 78), hero[1], font=F(28, True), fill=(255, 215, 90, 255), anchor="rm")
