@@ -1134,12 +1134,96 @@ def post_upcoming(now, sent):
         sent.add(key)
 
 
+# ---------- KUNLIK NATIJALAR (har ertalab) ----------
+DAILY_HOUR = 9  # Toshkent vaqti bilan; 08:00 dagi "bugungi o'yinlar" ro'yxatidan keyin
+FLAG_EMOJI = {"eng.1": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "esp.1": "🇪🇸", "ita.1": "🇮🇹", "ger.1": "🇩🇪", "fra.1": "🇫🇷", "por.1": "🇵🇹",
+              "ned.1": "🇳🇱", "tur.1": "🇹🇷", "ksa.1": "🇸🇦", "usa.1": "🇺🇸", "uefa.champions": "🇪🇺",
+              "uefa.europa": "🇪🇺", "uefa.europa.conf": "🇪🇺", "afc.champions": "🌏", "afc.cup": "🌏"}
+
+
+def send_text(text):
+    """Matnli xabar kanalga (va guruhga). Hech bo'lmasa kanalga ketsa — True."""
+    ok = False
+    for chat in [CHANNEL_ID] + ([GROUP_ID] if GROUP_ID else []):
+        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                          data={"chat_id": chat, "text": text, "parse_mode": "HTML",
+                                "disable_web_page_preview": "true"}, timeout=30)
+        print("TELEGRAM text", chat, ":", r.status_code, r.text[:120])
+        if chat == CHANNEL_ID:
+            ok = r.ok
+    return ok
+
+
+def daily_results_text(items, videos):
+    """Rasm ostidagi matn: har o'yin — hisob, Statistika va (bo'lsa) YouTube sharh havolasi."""
+    e = html.escape
+    link, _ = channel_info()
+    by_league = {}
+    for label, m in sorted(items, key=lambda x: x[1]["dt"]):
+        by_league.setdefault(label, []).append(m)
+    footer = f'\n<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n<b>FUTBOL OLAMI</b>"
+    blocks, cur = [], "📊 <b>So'nggi 24 soat natijalari</b>\n"
+    for label, ms in sorted(by_league.items(), key=lambda kv: PRIORITY.index(LEAGUE_CODE.get(kv[0])) if LEAGUE_CODE.get(kv[0]) in PRIORITY else 99):
+        block = f"\n{FLAG_EMOJI.get(LEAGUE_CODE.get(label), '🏆')} <b>{e(league_title(label), quote=False)}</b>\n"
+        for m in ms:
+            line = (f"⚽ {e(m['home'], quote=False)} <b>{m['hg']}:{m['ag']}</b> {e(m['away'], quote=False)}"
+                    f"{' (' + e(m['note'], quote=False) + ')' if m.get('note') else ''}"
+                    f' · <a href="{e(m["link"])}">Statistika</a>')
+            if videos.get(m["id"]):
+                line += f' · <a href="{e(videos[m["id"]])}">▶️ Obzor</a>'
+            block += line + "\n"
+        if len(cur) + len(block) > 3700:
+            blocks.append(cur)
+            cur = ""
+        cur += block
+    blocks.append(cur)
+    blocks[-1] += footer
+    return blocks
+
+
+def post_daily_results(now, sent):
+    """Har ertalab (DAILY_HOUR dan) — oxirgi 24 soatdagi barcha o'yinlar natijasi: bitta rasm (faqat hisob)
+    va uning ostida alohida matn: Statistika + ▶️ Obzor."""
+    key = f"daily-{now:%Y-%m-%d}"
+    if TEST_MODE:
+        key = None
+    elif now.hour < DAILY_HOUR or key in sent:
+        return
+    dates = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in (2, 1, 0)]
+    items, seen = [], set()
+    for code, label in LEAGUES.items():
+        for d_ in dates:
+            for ev in get_events(code, d_):
+                m = parse_event(ev)
+                if (m and m["id"] not in seen and league_ok(code, m)
+                        and timedelta(0) <= now - m["dt"] <= timedelta(hours=24)):
+                    seen.add(m["id"])
+                    items.append((label, m))
+    print("DAILY RESULTS FOUND:", len(items))
+    if not items:
+        if key:
+            sent.add(key)
+        return
+    items = select_main(items)
+    if not post(items, "SO'NGGI 24 SOAT NATIJALARI", "📊 Kecha va tunda o'ynalgan o'yinlar natijalari.", now):
+        return
+    if not TEST_MODE:
+        time.sleep(3)
+    ok = True
+    for chunk in daily_results_text(items, load_videos()):
+        ok = send_text(chunk) and ok
+        time.sleep(2)
+    if key:
+        sent.add(key)
+
+
 def main():
     now = datetime.now(TASHKENT)
     sent = load_sent()
     cards = load_cards()
     post_finished(now, sent, cards)
     post_upcoming(now, sent)
+    post_daily_results(now, sent)
     post_lineups(now, sent)
     try:
         from standings import post_tables
