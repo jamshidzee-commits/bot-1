@@ -1167,10 +1167,11 @@ def daily_results_text(items, videos):
         block = f"\n{FLAG_EMOJI.get(LEAGUE_CODE.get(label), '🏆')} <b>{e(league_title(label), quote=False)}</b>\n"
         for m in ms:
             line = (f"⚽ {e(m['home'], quote=False)} <b>{m['hg']}:{m['ag']}</b> {e(m['away'], quote=False)}"
-                    f"{' (' + e(m['note'], quote=False) + ')' if m.get('note') else ''}"
-                    f' · <a href="{e(m["link"])}">Statistika</a>')
+                    f"{' (' + e(m['note'], quote=False) + ')' if m.get('note') else ''}")
+            links = f'📊 <a href="{e(m["link"])}">Statistika</a>'
             if videos.get(m["id"]):
-                line += f' · <a href="{e(videos[m["id"]])}">▶️ Obzor</a>'
+                links += f'   |   ▶️ <a href="{e(videos[m["id"]])}">YouTube</a>'
+            line += "\n      └ " + links + "\n"
             block += line + "\n"
         if len(cur) + len(block) > 3700:
             blocks.append(cur)
