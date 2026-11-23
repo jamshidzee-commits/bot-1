@@ -41,13 +41,16 @@ jobs:
         run: |
           git config user.name "futbol-olami-bot"
           git config user.email "bot@users.noreply.github.com"
+          # Navbatda kutgan ishga tushirish eski snapshot'ni oladi (queue paytidagi commit) —
+          # shuning uchun boshida eng so'nggi holatni (sent.json va h.k.) majburan olamiz, aks holda xabarlar takrorlanadi.
+          git fetch -q origin main && git reset -q --hard origin/main
           save() {
             touch sent.json highlights.json cards.json live.json
             git add sent.json highlights.json cards.json live.json
             git diff --cached --quiet && return 0
             git commit -q -m "update state"
             for i in 1 2 3 4 5; do
-              git pull -q --rebase --autostash && git push -q && return 0
+              git pull -q --rebase --autostash -X theirs && git push -q && return 0
               sleep $((i*3))
             done
           }
