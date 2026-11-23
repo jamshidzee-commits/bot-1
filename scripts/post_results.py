@@ -41,6 +41,7 @@ LEAGUES = {
     "afc.champions": "AFC — OSIYO CHEMPIONLAR LIGASI",
     "afc.cup": "AFC — OSIYO CHEMPIONLAR LIGASI 2",
     "usa.1": "AMERIKA — MLS",
+    "fifa.world.u17": "JAHON CHEMPIONATI — U-17",
 }
 
 MONTHS = {1: "YANVAR", 2: "FEVRAL", 3: "MART", 4: "APREL", 5: "MAY", 6: "IYUN",
@@ -290,6 +291,7 @@ LEAGUE_STYLE = {
     "afc.champions": ((8, 64, 56), (50, 200, 150)),
     "afc.cup": ((72, 40, 18), (240, 150, 70)),
     "usa.1": ((72, 22, 52), (245, 135, 185)),
+    "fifa.world.u17": ((8, 52, 96), (60, 180, 235)),
 }
 DEFAULT_STYLE = ((20, 32, 100), (115, 145, 255))
 
@@ -366,6 +368,10 @@ def make_flag(code):
             for iy in range(3):
                 cx, cy = w * (0.08 + ix * 0.09), h * (0.1 + iy * 0.15)
                 d.ellipse((cx - 2 * k, cy - 2 * k, cx + 2 * k, cy + 2 * k), fill=(255, 255, 255))
+    elif code == "fifa.world.u17":  # O'zbekiston bayrog'i: ko'k / oq / yashil, qizil chiziqlar
+        horiz([(0, 153, 181), (255, 255, 255), (30, 181, 58)], [1, 1, 1])
+        d.rectangle((0, round(h / 3) - 2 * k, w, round(h / 3) + 2 * k), fill=(206, 17, 38))
+        d.rectangle((0, round(h * 2 / 3) - 2 * k, w, round(h * 2 / 3) + 2 * k), fill=(206, 17, 38))
     elif code and code.startswith("afc"):  # Osiyo: yashil fon, oq doira
         d.rectangle((0, 0, w, h), fill=(0, 122, 80))
         r = h * 0.3
@@ -386,7 +392,7 @@ def make_flag(code):
     return fl
 
 
-PRIORITY = ["uefa.champions", "afc.champions", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1",
+PRIORITY = ["fifa.world.u17", "uefa.champions", "afc.champions", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1",
             "uefa.europa", "uefa.europa.conf", "afc.cup", "usa.1", "ksa.1", "tur.1", "por.1", "ned.1"]
 MAX_ROWS = 24  # bitta rasmga sig'adigan maksimal o'yinlar soni
 
@@ -898,11 +904,13 @@ def league_ok(code, m):
         return any(k in n for n in forms for k in UZ_CLUBS + ("al nassr",))
     if code == "usa.1":
         return any("inter miami" in n for n in forms)
+    if code == "fifa.world.u17":  # Jahon chempionati U-17 — faqat O'zbekiston terma jamoasi
+        return any("uzbekistan" in n for n in forms)
     return True
 
 
 def is_top(m, code):
-    if code.startswith("afc.") or code == "usa.1":
+    if code.startswith("afc.") or code in ("usa.1", "fifa.world.u17"):
         return league_ok(code, m)
     forms = _name_forms(m["home"], m["away"])
     return (code == "uefa.champions" or any(n in TOP_CLUBS for n in forms)
@@ -1138,7 +1146,7 @@ def post_upcoming(now, sent):
 DAILY_HOUR = 9  # Toshkent vaqti bilan; 08:00 dagi "bugungi o'yinlar" ro'yxatidan keyin
 FLAG_EMOJI = {"eng.1": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "esp.1": "🇪🇸", "ita.1": "🇮🇹", "ger.1": "🇩🇪", "fra.1": "🇫🇷", "por.1": "🇵🇹",
               "ned.1": "🇳🇱", "tur.1": "🇹🇷", "ksa.1": "🇸🇦", "usa.1": "🇺🇸", "uefa.champions": "🇪🇺",
-              "uefa.europa": "🇪🇺", "uefa.europa.conf": "🇪🇺", "afc.champions": "🌏", "afc.cup": "🌏"}
+              "uefa.europa": "🇪🇺", "uefa.europa.conf": "🇪🇺", "afc.champions": "🌏", "afc.cup": "🌏", "fifa.world.u17": "🇺🇿"}
 
 
 def send_text(text):
