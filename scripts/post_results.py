@@ -42,7 +42,16 @@ LEAGUES = {
     "afc.cup": "AFC — OSIYO CHEMPIONLAR LIGASI 2",
     "usa.1": "AMERIKA — MLS",
     "fifa.world.u17": "JAHON CHEMPIONATI — U-17",
+    "fifa.world.u20": "JAHON CHEMPIONATI — U-20",
+    "fifa.world": "JAHON CHEMPIONATI",
+    "fifa.worldq.afc": "JAHON CHEMPIONATI — OSIYO saralash",
+    "afc.asian.cup": "OSIYO KUBOGI",
+    "afc.cupq": "OSIYO KUBOGI — saralash",
+    "fifa.friendly": "TERMA JAMOALAR — DO'STLIK O'YINLARI",
 }
+# Faqat O'zbekiston terma jamoalari (har qanday yosh toifasi) o'ynaydigan turnirlar
+UZ_NT_CODES = ("fifa.world.u17", "fifa.world.u20", "fifa.world", "fifa.worldq.afc",
+               "afc.asian.cup", "afc.cupq", "fifa.friendly")
 
 MONTHS = {1: "YANVAR", 2: "FEVRAL", 3: "MART", 4: "APREL", 5: "MAY", 6: "IYUN",
           7: "IYUL", 8: "AVGUST", 9: "SENTABR", 10: "OKTABR", 11: "NOYABR", 12: "DEKABR"}
@@ -292,6 +301,12 @@ LEAGUE_STYLE = {
     "afc.cup": ((72, 40, 18), (240, 150, 70)),
     "usa.1": ((72, 22, 52), (245, 135, 185)),
     "fifa.world.u17": ((8, 52, 96), (60, 180, 235)),
+    "fifa.world.u20": ((8, 52, 96), (60, 180, 235)),
+    "fifa.world": ((8, 52, 96), (60, 180, 235)),
+    "fifa.worldq.afc": ((8, 52, 96), (60, 180, 235)),
+    "afc.asian.cup": ((8, 52, 96), (60, 180, 235)),
+    "afc.cupq": ((8, 52, 96), (60, 180, 235)),
+    "fifa.friendly": ((8, 52, 96), (60, 180, 235)),
 }
 DEFAULT_STYLE = ((20, 32, 100), (115, 145, 255))
 
@@ -368,7 +383,7 @@ def make_flag(code):
             for iy in range(3):
                 cx, cy = w * (0.08 + ix * 0.09), h * (0.1 + iy * 0.15)
                 d.ellipse((cx - 2 * k, cy - 2 * k, cx + 2 * k, cy + 2 * k), fill=(255, 255, 255))
-    elif code == "fifa.world.u17":  # O'zbekiston bayrog'i: ko'k / oq / yashil, qizil chiziqlar
+    elif code in UZ_NT_CODES:  # O'zbekiston bayrog'i: ko'k / oq / yashil, qizil chiziqlar
         horiz([(0, 153, 181), (255, 255, 255), (30, 181, 58)], [1, 1, 1])
         d.rectangle((0, round(h / 3) - 2 * k, w, round(h / 3) + 2 * k), fill=(206, 17, 38))
         d.rectangle((0, round(h * 2 / 3) - 2 * k, w, round(h * 2 / 3) + 2 * k), fill=(206, 17, 38))
@@ -392,7 +407,7 @@ def make_flag(code):
     return fl
 
 
-PRIORITY = ["fifa.world.u17", "uefa.champions", "afc.champions", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1",
+PRIORITY = ["fifa.world", "fifa.world.u20", "fifa.world.u17", "afc.asian.cup", "fifa.worldq.afc", "afc.cupq", "fifa.friendly", "uefa.champions", "afc.champions", "eng.1", "esp.1", "ita.1", "ger.1", "fra.1",
             "uefa.europa", "uefa.europa.conf", "afc.cup", "usa.1", "ksa.1", "tur.1", "por.1", "ned.1"]
 MAX_ROWS = 24  # bitta rasmga sig'adigan maksimal o'yinlar soni
 
@@ -900,17 +915,17 @@ def _name_forms(*names):
 def league_ok(code, m):
     """Cheklangan turnirlar: AFC — faqat O'zbekiston klublari va Al Nassr; MLS — faqat Inter Miami (Messi)."""
     forms = _name_forms(m["home"], m["away"])
+    if code in UZ_NT_CODES:  # terma jamoalar turnirlari — faqat O'zbekiston (har qanday yosh)
+        return any("uzbekistan" in n for n in forms)
     if code.startswith("afc."):
         return any(k in n for n in forms for k in UZ_CLUBS + ("al nassr",))
     if code == "usa.1":
         return any("inter miami" in n for n in forms)
-    if code == "fifa.world.u17":  # Jahon chempionati U-17 — faqat O'zbekiston terma jamoasi
-        return any("uzbekistan" in n for n in forms)
     return True
 
 
 def is_top(m, code):
-    if code.startswith("afc.") or code in ("usa.1", "fifa.world.u17"):
+    if code.startswith("afc.") or code == "usa.1" or code in UZ_NT_CODES:
         return league_ok(code, m)
     forms = _name_forms(m["home"], m["away"])
     return (code == "uefa.champions" or any(n in TOP_CLUBS for n in forms)
@@ -1146,7 +1161,8 @@ def post_upcoming(now, sent):
 DAILY_HOUR = 9  # Toshkent vaqti bilan; 08:00 dagi "bugungi o'yinlar" ro'yxatidan keyin
 FLAG_EMOJI = {"eng.1": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "esp.1": "🇪🇸", "ita.1": "🇮🇹", "ger.1": "🇩🇪", "fra.1": "🇫🇷", "por.1": "🇵🇹",
               "ned.1": "🇳🇱", "tur.1": "🇹🇷", "ksa.1": "🇸🇦", "usa.1": "🇺🇸", "uefa.champions": "🇪🇺",
-              "uefa.europa": "🇪🇺", "uefa.europa.conf": "🇪🇺", "afc.champions": "🌏", "afc.cup": "🌏", "fifa.world.u17": "🇺🇿"}
+              "uefa.europa": "🇪🇺", "uefa.europa.conf": "🇪🇺", "afc.champions": "🌏", "afc.cup": "🌏", "fifa.world.u17": "🇺🇿", "fifa.world.u20": "🇺🇿", "fifa.world": "🇺🇿",
+              "fifa.worldq.afc": "🇺🇿", "afc.asian.cup": "🇺🇿", "afc.cupq": "🇺🇿", "fifa.friendly": "🇺🇿"}
 
 
 def send_text(text):
