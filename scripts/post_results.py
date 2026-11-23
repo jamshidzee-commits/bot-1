@@ -1251,7 +1251,8 @@ def main():
     post_daily_results(now, sent)
     post_lineups(now, sent)
     try:
-        from standings import post_tables
+        from standings import post_tables, post_group_tables
+        post_group_tables(now, sent)
         post_tables(now, sent)
     except Exception as e:
         print("TABLE ERROR", e)

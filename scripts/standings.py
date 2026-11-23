@@ -12,6 +12,9 @@ from PIL import Image, ImageDraw
 from post_results import (LEAGUES, LEAGUE_STYLE, TASHKENT, MONTHS, DAYS, F, W, get_events, get_logo, fit_text,
                           channel_info, league_title, send_photo, paste_logo, TEST_MODE)
 
+# O'zbekiston terma jamoasi ishtirok etadigan guruh bosqichi turnirlari — o'yindan keyin O'zbekiston guruhi jadvali
+GROUP_LEAGUES = ["fifa.world.u17", "fifa.world.u20", "fifa.world"]
+GROUP_AFTER_HOURS = 30
 TABLE_LEAGUES = ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "por.1", "ned.1", "tur.1", "ksa.1"]
 STANDINGS = "https://site.api.espn.com/apis/v2/sports/soccer/{code}/standings"
 AFTER_HOURS, BEFORE_HOURS = 30, 40
@@ -42,14 +45,23 @@ def round_key(code, now):
     return f"table-{code}-{last_done.strftime('%Y%m%d')}"
 
 
-def fetch_table(code):
+def fetch_table(code, team=None):
+    """Liga jadvali. team berilsa — shu jamoa turgan guruh jadvali (guruh nomi bilan birga qaytadi)."""
+    group = ""
     try:
         r = requests.get(STANDINGS.format(code=code), timeout=30)
         r.raise_for_status()
-        entries = r.json()["children"][0]["standings"]["entries"]
+        children = r.json()["children"]
+        child = children[0]
+        if team:
+            child = next(c for c in children
+                         if any(team in (en.get("team", {}).get("displayName", "") or "").lower()
+                                for en in c["standings"]["entries"]))
+            group = child.get("name", "")
+        entries = child["standings"]["entries"]
     except Exception as e:
         print("STANDINGS ERROR", code, e)
-        return []
+        return ([], "") if team else []
     rows = []
     for e in entries:
         st = {s["name"]: s.get("value") for s in e.get("stats", [])}
@@ -65,7 +77,7 @@ def fetch_table(code):
         except (TypeError, ValueError):
             continue
     rows.sort(key=lambda r: (r["rank"] or 99, -r["pts"]))
-    return rows
+    return (rows, group) if team else rows
 
 
 ZONES = {"champions league": "Chempionlar Ligasi", "europa league": "Yevropa Ligasi",
@@ -86,7 +98,7 @@ def _hex(c, default=None):
         return default
 
 
-def make_table_image(code, rows, now):
+def make_table_image(code, rows, now, title_text=None, sub_text="TURNIR JADVALI"):
     top, step, foot_h = 330, 62, 190
     legend = []
     for r in rows:
@@ -107,9 +119,9 @@ def make_table_image(code, rows, now):
     d.text((185, 55), "FUTBOL OLAMI", font=F(48, True), fill=(245, 250, 255, 255))
     d.text((188, 112), "Futbol haqida hammasi!", font=F(26), fill=(150, 215, 250, 255))
 
-    title, tf = fit_text(d, league_title(LEAGUES[code]), W - 110, 40, 26)
+    title, tf = fit_text(d, title_text or league_title(LEAGUES[code]), W - 110, 40, 26)
     d.text((55, 190), title, font=tf, fill=(255, 255, 255, 255))
-    d.text((55, 250), "TURNIR JADVALI", font=F(34, True), fill=accent + (255,))
+    d.text((55, 250), sub_text, font=F(34, True), fill=accent + (255,))
     d.text((W - 55, 262), f"{now.strftime('%d.%m.%Y')} · {DAYS[now.weekday()]}", font=F(24),
            fill=(200, 225, 240, 255), anchor="rm")
 
@@ -177,3 +189,49 @@ def post_tables(now, sent):
             if send_photo(make_table_image(code, rows, now), caption(code)):
                 sent.add(key)
         return
+
+
+def group_title(group):
+    """'Group E' -> 'E GURUHI'."""
+    g = (group or "").strip()
+    return (g.split()[-1].upper() + " GURUHI") if g else "GURUH"
+
+
+def post_group_tables(now, sent):
+    """O'zbekiston o'yini tugagach — uning guruhi jadvali (har o'yin uchun bir marta)."""
+    for code in GROUP_LEAGUES:
+        for off in (-1, 0):
+            d = (now + timedelta(days=off)).strftime("%Y-%m-%d")
+            for ev in get_events(code, d):
+                try:
+                    comp = ev["competitions"][0]
+                    names = " ".join(c["team"]["displayName"] for c in comp["competitors"]).lower()
+                    if "uzbekistan" not in names:
+                        continue
+                    if comp["status"]["type"].get("state") != "post":
+                        continue
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(ev["date"].replace("Z", "+00:00")).astimezone(TASHKENT)
+                except Exception:
+                    continue
+                hrs = (dt - now).total_seconds() / 3600
+                key = f"group-{code}-{ev['id']}"
+                if key in sent or not (-GROUP_AFTER_HOURS <= hrs <= -2.0):
+                    continue
+                rows, group = fetch_table(code, "uzbekistan")
+                if len(rows) < 3:
+                    continue
+                # jadval yangilanmagan bo'lsa (O'zbekiston o'yini hisobga olinmagan) — keyingi safar
+                if not any("uzbekistan" in r["name"].lower() and r["p"] > 0 for r in rows):
+                    continue
+                print("GROUP TABLE:", code, key)
+                if not TEST_MODE:
+                    title = f"{league_title(LEAGUES[code])}"
+                    img = make_table_image(code, rows, now, title_text=title, sub_text=group_title(group))
+                    link, _ = channel_info()
+                    cap = (f"📊 <b>{html.escape(title, quote=False)} · {html.escape(group_title(group), quote=False)}</b>\n"
+                           "O'zbekiston o'yinidan keyin — guruh jadvali"
+                           + (f'\n\n<a href="{html.escape(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n\n<b>FUTBOL OLAMI</b>"))
+                    if send_photo(img, cap):
+                        sent.add(key)
+                return
