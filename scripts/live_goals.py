@@ -11,6 +11,7 @@ import html
 import requests
 from datetime import datetime, timedelta
 
+import goal_clips
 from goal_video import make_goal_video
 from post_results import (BOT_TOKEN, CHANNEL_ID, GROUP_ID, LEAGUES, TASHKENT, get_events, parse_event, basic_event, is_top,
                           make_result_card, league_title, send_photo, channel_info, TEST_MODE)
@@ -67,7 +68,7 @@ def _send_gif(chat_id, data, cap):
     return r.ok
 
 
-def post_goal(label, m, g, hg, ag, upto, minute):
+def post_goal(label, m, g, hg, ag, upto, minute, state=None, code=None):
     """Gol uchun animatsion GIF (bo'lmasa rasm): o'sha paytdagi hisob va shu paytgacha bo'lgan voqealar."""
     snap = dict(m, hg=hg, ag=ag, events=m["events"][:upto])
     word = "AVTOGOL!" if g and g["og"] else "GOOOOL!"
@@ -81,7 +82,10 @@ def post_goal(label, m, g, hg, ag, upto, minute):
             if GROUP_ID:
                 _send_gif(GROUP_ID, gif, cap)
             return True
-    return bool(send_photo(img, cap))
+    ids = send_photo(img, cap)
+    if state is not None:
+        goal_clips.register(state, ids, code, m, g, hg, ag, minute)
+    return bool(ids)
 
 
 def post_red(label, m, e, hg, ag, upto):
@@ -102,7 +106,7 @@ def post_red(label, m, e, hg, ag, upto):
     return bool(send_photo(img, "\n".join(cap)))
 
 
-def process_live(label, ev, state):
+def process_live(label, ev, state, code=None):
     m = parse_event(ev, live=True)
     if not m:
         return
@@ -143,7 +147,7 @@ def process_live(label, ev, state):
             continue  # eski gol — takrorlab yubormaymiz
         print("GOAL:", m["home"], hg, ag, m["away"], e["name"], e["min"])
         if not TEST_MODE:
-            post_goal(label, m, e, hg, ag, idx + 1, e["min"])
+            post_goal(label, m, e, hg, ag, idx + 1, e["min"], state, code)
             time.sleep(3.5)
     # tafsilotsiz gol: hisob oshgan, lekin voqea ro'yxatida yo'q (2 ta ketma-ket so'rovdan keyin yuboriladi)
     accounted = sum(1 for k in rec["seen"] if not k.startswith("red|")) + rec["generic"]
@@ -155,7 +159,7 @@ def process_live(label, ev, state):
             rec["gap"] = 0
             print("GOAL (no details):", m["home"], m["hg"], m["ag"], m["away"])
             if not TEST_MODE:
-                post_goal(label, m, None, m["hg"], m["ag"], len(events), m["clock"] or "")
+                post_goal(label, m, None, m["hg"], m["ag"], len(events), m["clock"] or "", state, code)
     else:
         rec["gap"] = 0
     if first_sight and total > accounted:
@@ -186,7 +190,7 @@ def main():
                 watch.add((code, d))
             if b["state"] == "in":
                 try:
-                    process_live(LEAGUES[code], ev, state)
+                    process_live(LEAGUES[code], ev, state, code)
                 except Exception as e:
                     print("LIVE ERROR", ev.get("id"), e)
     state["dbg"] = {"ts": datetime.now(TASHKENT).strftime("%H:%M:%S"), "full": full, "targets": len(targets), "in_play": dbg}
@@ -195,6 +199,10 @@ def main():
         state["watch"] = sorted(watch)
         state["scan_ts"] = time.time()
     if not TEST_MODE:
+        try:
+            goal_clips.check(state)
+        except Exception as e:
+            print("GOAL CLIPS xato:", e)
         save_state(state)
 
 
