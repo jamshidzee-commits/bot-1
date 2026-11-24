@@ -477,14 +477,15 @@ def offer_new(s):
         url = find_video(m, s)
         if not url:
             continue
-        videos[m["id"]] = url  # live_board.py shu havolani "Obzor" sifatida ko'rsatadi
-        if m["code"] not in DM_CODES:
-            continue
         t = text(m, url)
-        send_news(ADMIN_ID, t, url,
-                  reply_markup={"inline_keyboard": [[{"text": "✅ Kanalga", "callback_data": f"pub:{m['id']}"},
-                                                     {"text": "❌ Kerak emas", "callback_data": f"skip:{m['id']}"}]]})
-        s["offered"][m["id"]] = {"text": t, "video": url}
+        # Tasdiqsiz: sharh to'g'ridan-to'g'ri kanalga (va guruhga) chiqadi, video Telegramning o'zida o'ynaydi
+        r = send_news(CHANNEL_ID, t, url)
+        if not r.get("ok"):
+            continue  # keyingi ishga tushirishda qayta uriniladi
+        if GROUP_ID:
+            send_news(GROUP_ID, t, url)
+        videos[m["id"]] = url  # jadvallarda "Obzor" havolasi sifatida ham ishlatiladi
+        s["offered"][m["id"]] = {"text": t, "video": url, "done": "published"}
         sent += 1
 
 if __name__ == "__main__":
