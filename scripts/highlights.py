@@ -44,7 +44,7 @@ def finished_matches():
     now = datetime.now(TASHKENT)
     out = []
     for code, league in LEAGUES.items():
-        for i in (range(7, -1, -1) if TEST else (1, 0)):
+        for i in (range(7, -1, -1) if TEST else (3, 2, 1, 0)):
             d = (now - timedelta(days=i)).strftime("%Y%m%d")
             try:
                 evs = requests.get(ESPN.format(code=code), params={"dates": d}, timeout=30).json().get("events", [])
@@ -69,7 +69,7 @@ def finished_matches():
 OFFICIAL_CHANNELS = {
     "UCyGa1YEx9ST66rYrJTGIKOw": ("UEFA", ["uefa.champions", "uefa.europa"]),
 }
-MAX_TRIES = 12  # сколько раз искать обзор для одного матча (каждые 30 мин ~ 6 часов; поиск дешёвый)
+MAX_TRIES = 200  # обзор ищем до ~3 суток после матча (поиск каждые 30 мин, дешёвый)
 
 # Rasmiy liga kanallari: ID ni bot o'zi handle bo'yicha topadi va kanal nomini tekshiradi
 # (nomi mos kelmasa — o'tkazib yuboradi, noto'g'ri kanaldan video olmaydi).
@@ -112,19 +112,27 @@ def team_keys(name):
 
 _uploads = {}
 
-def uploads(ch_id):
-    """Последние 50 видео канала (1 единица квоты, вместо дорогого поиска за 100)."""
-    if ch_id not in _uploads:
+def uploads(ch_id, pages=1):
+    """Последние видео канала: 50 на страницу (1 единица квоты за страницу, вместо дорогого поиска за 100)."""
+    key = (ch_id, pages)
+    if key not in _uploads:
+        out, token = [], None
         try:
-            r = requests.get("https://www.googleapis.com/youtube/v3/playlistItems", params={
-                "key": YT_KEY, "part": "snippet", "playlistId": "UU" + ch_id[2:], "maxResults": 50}, timeout=30).json()
-            _uploads[ch_id] = [(it["snippet"]["title"], it["snippet"]["publishedAt"], it["snippet"]["resourceId"]["videoId"])
-                               for it in r.get("items", [])]
-            print("YT UPLOADS", ch_id, len(_uploads[ch_id]))
+            for _ in range(pages):
+                params = {"key": YT_KEY, "part": "snippet", "playlistId": "UU" + ch_id[2:], "maxResults": 50}
+                if token:
+                    params["pageToken"] = token
+                r = requests.get("https://www.googleapis.com/youtube/v3/playlistItems", params=params, timeout=30).json()
+                out += [(it["snippet"]["title"], it["snippet"]["publishedAt"], it["snippet"]["resourceId"]["videoId"])
+                        for it in r.get("items", [])]
+                token = r.get("nextPageToken")
+                if not token:
+                    break
+            print("YT UPLOADS", ch_id, len(out))
         except Exception as e:
             print("YOUTUBE ERROR", ch_id, e)
-            _uploads[ch_id] = []
-    return _uploads[ch_id]
+        _uploads[key] = out
+    return _uploads[key]
 
 def resolve_channels(s):
     found = s.setdefault("channels", {})
@@ -156,7 +164,7 @@ def find_video(m, s):
     after = m["end"] - timedelta(hours=1)
     hk, ak = team_keys(m["home"]), team_keys(m["away"])
     for ch_id in channels_for(s, m["code"]):
-        for title, pub, vid in uploads(ch_id):
+        for title, pub, vid in uploads(ch_id, pages=4):
             try:
                 when = datetime.fromisoformat(pub.replace("Z", "+00:00"))
             except ValueError:
@@ -466,7 +474,7 @@ def offer_new(s):
             break
         if (m["id"] in videos or m["id"] in s["offered"]) and not TEST:
             continue
-        if now - m["end"] > timedelta(days=8 if TEST else 1.25):
+        if now - m["end"] > timedelta(days=8 if TEST else 3):
             continue
         if not channels_for(s, m["code"]):
             continue

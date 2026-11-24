@@ -4,7 +4,7 @@ import re
 import time
 
 CHECK_EVERY_SEC = 300      # YouTube kvotasini tejash: har 5 daqiqada
-MAX_AGE_SEC = 100 * 60     # klipni gol rasmidan keyin 100 daqiqagacha qidiramiz
+MAX_AGE_SEC = 30 * 60      # klipni gol rasmidan keyin 30 daqiqagacha qidiramiz, topilmasa — to'xtaymiz
 BAD = ("highlight", "full match", "preview", "press conference", "reaction", "interview", "predict", "trailer", "live")
 
 
