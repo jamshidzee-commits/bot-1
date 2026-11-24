@@ -1188,7 +1188,7 @@ def daily_results_text(items, videos):
 
 def post_daily_results(now, sent):
     """Har ertalab (DAILY_HOUR dan) — oxirgi 24 soatdagi barcha o'yinlar natijasi: bitta rasm (faqat hisob)
-    va uning ostida alohida matn: Statistika + ▶️ Obzor."""
+    (ostidagi umumiy matnli ro'yxat olib tashlangan — Statistika kartochkada, Obzor alohida videoda)."""
     key = f"daily-{now:%Y-%m-%d}"
     if TEST_MODE:
         key = None
@@ -1212,12 +1212,6 @@ def post_daily_results(now, sent):
     items = select_main(items)
     if not post(items, "SO'NGGI 24 SOAT NATIJALARI", "📊 Kecha va tunda o'ynalgan o'yinlar natijalari.", now):
         return
-    if not TEST_MODE:
-        time.sleep(3)
-    ok = True
-    for chunk in daily_results_text(items, load_videos()):
-        ok = send_text(chunk) and ok
-        time.sleep(2)
     if key:
         sent.add(key)
 
