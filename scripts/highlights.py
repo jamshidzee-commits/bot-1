@@ -171,8 +171,10 @@ def find_video(m, s):
     return None
 
 def text(m, url):
-    return (f"⚽ <b>{html.escape(m['home'])} {m['hg']}:{m['ag']} {html.escape(m['away'])}</b>\n"
-            f"🏆 {m['league']}\n\n🎬 O'yin sharhi: {url}\n\n<b>FUTBOL OLAMI</b>")
+    """Video Telegramning o'zida tepada o'ynaydi (link_preview_options), pastda — matn va kanal logotipi/havolasi."""
+    return (f"🎬 <b>{html.escape(m['home'])} {m['hg']}:{m['ag']} {html.escape(m['away'])}</b>\n"
+            f"🏆 {m['league']}\n"
+            f"▶️ O'yin sharhi\n\n{_channel_footer()}")
 
 def handle_buttons(s):
     # Vercel-бот удалён: если у бота остался webhook, getUpdates вернёт 409 и кнопки не сработают
@@ -191,9 +193,15 @@ def handle_buttons(s):
                 if GROUP_ID:
                     send_news(GROUP_ID, item["text"], item.get("image", ""))
             else:
-                tg("sendMessage", chat_id=CHANNEL_ID, text=item["text"], parse_mode="HTML")
-                if GROUP_ID:
-                    tg("sendMessage", chat_id=GROUP_ID, text=item["text"], parse_mode="HTML")
+                video = item.get("video")
+                if video:  # yangi format: video tepada o'ynaydi, matn pastda
+                    send_news(CHANNEL_ID, item["text"], video)
+                    if GROUP_ID:
+                        send_news(GROUP_ID, item["text"], video)
+                else:  # eski (kutib turgan) takliflar
+                    tg("sendMessage", chat_id=CHANNEL_ID, text=item["text"], parse_mode="HTML")
+                    if GROUP_ID:
+                        tg("sendMessage", chat_id=GROUP_ID, text=item["text"], parse_mode="HTML")
             item["done"] = "published"
             note = "✅ Kanalga joylandi"
         else:
@@ -473,10 +481,10 @@ def offer_new(s):
         if m["code"] not in DM_CODES:
             continue
         t = text(m, url)
-        tg("sendMessage", chat_id=ADMIN_ID, text=t, parse_mode="HTML",
-           reply_markup={"inline_keyboard": [[{"text": "✅ Kanalga", "callback_data": f"pub:{m['id']}"},
-                                              {"text": "❌ Kerak emas", "callback_data": f"skip:{m['id']}"}]]})
-        s["offered"][m["id"]] = {"text": t}
+        send_news(ADMIN_ID, t, url,
+                  reply_markup={"inline_keyboard": [[{"text": "✅ Kanalga", "callback_data": f"pub:{m['id']}"},
+                                                     {"text": "❌ Kerak emas", "callback_data": f"skip:{m['id']}"}]]})
+        s["offered"][m["id"]] = {"text": t, "video": url}
         sent += 1
 
 if __name__ == "__main__":

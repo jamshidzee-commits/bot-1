@@ -796,50 +796,30 @@ def load_videos():
         return {}
 
 
-def card_caption(c, video=None):
+def card_caption(c):
     e = html.escape
     lines = [f"✅ <b>{e(c['home'], quote=False)} {c['hg']}:{c['ag']} {e(c['away'], quote=False)}</b>",
              f"🏆 {e(league_title(c['league']), quote=False)}"]
-    links = [f'🔗 <a href="{e(c["espn"])}">Statistika</a>']
-    if video:
-        links.append(f'▶️ <a href="{e(video)}">Obzor</a>')
-    lines.append("\n" + "  ·  ".join(links))
+    lines.append(f'\n🔗 <a href="{e(c["espn"])}">Statistika</a>')
     link, _ = channel_info()
     lines.append(f'\n<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n<b>FUTBOL OLAMI</b>")
     return "\n".join(lines)
 
 
 def post_card(label, m, cards, videos):
-    """Tugagan o'yin: bitta rasm (hisob) + pastda Statistika va (bo'lsa) YouTube sharh havolasi."""
+    """Tugagan o'yin: bitta rasm (hisob) + pastda Statistika. Sharh videosi alohida post bo'lib highlights.py orqali chiqadi."""
     c = {"home": m["home"], "away": m["away"], "hg": m["hg"], "ag": m["ag"],
          "league": label, "espn": m["link"]}
-    video = videos.get(m["id"])
     img = make_result_card(label, m)
-    ids = send_photo(img, card_caption(c, video))
+    ids = send_photo(img, card_caption(c))
     if ids and cards is not None:
-        cards[m["id"]] = {**c, "ids": ids, "video": bool(video)}
+        cards[m["id"]] = {**c, "ids": ids, "video": False}
     return bool(ids)
 
 
 def update_cards(cards):
-    """Sharh keyinroq chiqadi: topilgach, avval yuborilgan rasm ostiga 'Obzor' havolasi qo'shiladi."""
-    videos = load_videos()
-    for mid, c in cards.items():
-        url = videos.get(mid)
-        if c.get("video") or not url:
-            continue
-        cap = card_caption(c, url)
-        done = False
-        for chat, msg_id in c["ids"].items():
-            r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageCaption",
-                              data={"chat_id": chat, "message_id": msg_id, "caption": cap, "parse_mode": "HTML"},
-                              timeout=30)
-            print("EDIT CAPTION", chat, msg_id, r.status_code, r.text[:120])
-            if r.ok or "not modified" in r.text:
-                done = True
-            time.sleep(1)
-        if done:
-            c["video"] = True
+    """Eskirgan: 'Obzor' havolasi endi rasm ostiga qo'shilmaydi — video highlights.py da tepada o'ynaydi."""
+    return
 
 
 def post_finished(now, sent, cards):
