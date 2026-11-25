@@ -1,4 +1,4 @@
-import os, json, html, hashlib, re, unicodedata, requests
+import os, json, html, hashlib, re, time, unicodedata, requests
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
@@ -299,12 +299,61 @@ def text(m, url):
             f"🏆 {m['league']}\n"
             f"▶️ O'yin sharhi\n\n{_channel_footer()}")
 
+WELCOME = ("👋 Salom! Bu <b>FUTBOL OLAMI</b> kanalining boti.\n\n"
+           "Reklama, hamkorlik yoki savollar bo'yicha xabaringizni shu yerga yozing — admin javob beradi.")
+
+def handle_contact(s, msg):
+    """Bot orqali aloqa: foydalanuvchi yozadi -> admin shaxsiyga keladi; admin shu xabarga reply qilsa -> foydalanuvchiga botdan boradi."""
+    chat = msg.get("chat", {})
+    if chat.get("type") != "private" or not msg.get("from") or msg["from"].get("is_bot"):
+        return
+    uid, text = str(msg["from"]["id"]), msg.get("text") or ""
+    c = s.setdefault("contact", {})
+    cmap = c.setdefault("map", {})
+    if uid == str(ADMIN_ID):
+        rep = msg.get("reply_to_message")
+        target = cmap.get(str(rep["message_id"])) if rep else None
+        if target:
+            r = tg("copyMessage", chat_id=target, from_chat_id=chat["id"], message_id=msg["message_id"])
+            tg("sendMessage", chat_id=ADMIN_ID, reply_to_message_id=msg["message_id"],
+               text="✅ Javob yuborildi" if r.get("ok") else "❌ Yuborilmadi (foydalanuvchi botni bloklagan bo'lishi mumkin)")
+        elif text.startswith("/start"):
+            tg("sendMessage", chat_id=ADMIN_ID,
+               text="Siz adminsiz. Foydalanuvchi xabariga <b>reply</b> qilib javob bering — javob botdan uning o'ziga boradi.",
+               parse_mode="HTML")
+        return
+    if text.startswith("/start"):
+        tg("sendMessage", chat_id=chat["id"], text=WELCOME, parse_mode="HTML")
+        return
+    u = msg["from"]
+    name = html.escape(" ".join(x for x in (u.get("first_name"), u.get("last_name")) if x) or "—", quote=False)
+    handle = f" @{html.escape(u['username'], quote=False)}" if u.get("username") else ""
+    hdr = f"✉️ <b>{name}</b>{handle} (id {uid})\n↩️ Javob berish uchun shu xabarga yoki pastdagisiga <b>reply</b> qiling"
+    sent_ids = []
+    for r in (tg("sendMessage", chat_id=ADMIN_ID, text=hdr, parse_mode="HTML"),
+              tg("forwardMessage", chat_id=ADMIN_ID, from_chat_id=chat["id"], message_id=msg["message_id"])):
+        if r.get("ok"):
+            cmap[str(r["result"]["message_id"])] = chat["id"]
+            sent_ids.append(1)
+    for k in list(cmap)[:-400]:
+        cmap.pop(k)
+    last = c.setdefault("ack", {})
+    if sent_ids and time.time() - last.get(uid, 0) > 600:  # tasdiq xabari — har 10 daqiqada ko'pi bilan bir marta
+        last[uid] = time.time()
+        tg("sendMessage", chat_id=chat["id"], text="✅ Xabaringiz adminga yuborildi. Tez orada javob beramiz.")
+
 def handle_buttons(s):
     # Vercel-бот удалён: если у бота остался webhook, getUpdates вернёт 409 и кнопки не сработают
     tg("deleteWebhook", drop_pending_updates=False)
-    ups = tg("getUpdates", offset=s["offset"], timeout=0, allowed_updates=["callback_query"]).get("result", [])
+    ups = tg("getUpdates", offset=s["offset"], timeout=0, allowed_updates=["callback_query", "message"]).get("result", [])
     for u in ups:
         s["offset"] = u["update_id"] + 1
+        if u.get("message"):
+            try:
+                handle_contact(s, u["message"])
+            except Exception as e:
+                print("CONTACT xato:", e)
+            continue
         q = u.get("callback_query")
         if not q or str(q["from"]["id"]) != str(ADMIN_ID):
             continue
