@@ -204,6 +204,7 @@ def _ru_team_ok(ru_name, en_name):
     ru = " ".join(norm(ru_name).replace("-", " ").split())
     keys = set(team_keys(en_name)) | {norm(en_name)}
     for k, v in RU_ALIASES.items():
+        k = norm(k)  # norm() "й"→"и", "ё"→"е" qiladi — kalitlarni ham shunday qilamiz
         if ru == k or ru.startswith(k):  # nom jadvalda bor — faqat shunga qarab hal qilamiz (City/United adashmasligi uchun)
             return any(v in key for key in keys)
     tr = _translit(ru)
