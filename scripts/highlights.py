@@ -547,7 +547,7 @@ def _channel_footer():
     except Exception as e:
         print("CHANNEL INFO xato:", e)
         link = ""
-    return f'<a href="{html.escape(link)}">FUTBOL OLAMI</a> ✈️' if link else "<b>FUTBOL OLAMI</b>"
+    return f'👉 <a href="{html.escape(link)}">FUTBOL OLAMI</a> 👈' if link else "<b>FUTBOL OLAMI</b>"
 
 MAX_BODY = 3300  # Telegram: xabar 4096 belgigacha
 

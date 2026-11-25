@@ -171,7 +171,7 @@ def caption(code):
     link, _ = channel_info()
     e = html.escape
     lines = [f"📊 <b>{e(league_title(LEAGUES[code]), quote=False)}</b>", "Tur yakunlandi — turnir jadvali"]
-    lines.append(f'\n<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n<b>FUTBOL OLAMI</b>")
+    lines.append(f'\n👉 <a href="{e(link)}">FUTBOL OLAMI</a> 👈' if link else "\n<b>FUTBOL OLAMI</b>")
     return "\n".join(lines)
 
 
@@ -231,7 +231,7 @@ def post_group_tables(now, sent):
                     link, _ = channel_info()
                     cap = (f"📊 <b>{html.escape(title, quote=False)} · {html.escape(group_title(group), quote=False)}</b>\n"
                            "O'zbekiston o'yinidan keyin — guruh jadvali"
-                           + (f'\n\n<a href="{html.escape(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n\n<b>FUTBOL OLAMI</b>"))
+                           + (f'\n\n👉 <a href="{html.escape(link)}">FUTBOL OLAMI</a> 👈' if link else "\n\n<b>FUTBOL OLAMI</b>"))
                     if send_photo(img, cap):
                         sent.add(key)
                 return

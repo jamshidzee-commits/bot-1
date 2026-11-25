@@ -563,7 +563,7 @@ def post(items, title, caption_text, dt=None):
         img = make_list_image(title, dt or rows[0][1]["dt"], rows, no, len(pages))
         caption = caption_text
         if link:
-            caption += f'\n\n<a href="{html.escape(link)}">FUTBOL OLAMI</a> ✈️'
+            caption += f'\n\n👉 <a href="{html.escape(link)}">FUTBOL OLAMI</a> 👈'
         else:
             caption += "\n\n<b>FUTBOL OLAMI</b>"
         if send_photo(img, caption):
@@ -807,7 +807,7 @@ def card_caption(c):
              f"🏆 {e(league_title(c['league']), quote=False)}"]
     lines.append(f'\n🔗 <a href="{e(c["espn"])}">Statistika</a>')
     link, _ = channel_info()
-    lines.append(f'\n<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n<b>FUTBOL OLAMI</b>")
+    lines.append(f'\n👉 <a href="{e(link)}">FUTBOL OLAMI</a> 👈' if link else "\n<b>FUTBOL OLAMI</b>")
     return "\n".join(lines)
 
 
@@ -1075,7 +1075,7 @@ def lineup_caption(label, m):
             f"⚽ {e(m['home'], quote=False)} — {e(m['away'], quote=False)}\n"
             f"🏆 {e(league_title(label), quote=False)} · ⏰ {m['dt']:%H:%M}\n\n"
             f'🔗 <a href="{e(m["link"])}">Statistika</a>\n\n'
-            + (f'<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "<b>FUTBOL OLAMI</b>"))
+            + (f'👉 <a href="{e(link)}">FUTBOL OLAMI</a> 👈' if link else "<b>FUTBOL OLAMI</b>"))
 
 
 def post_lineups(now, sent):
@@ -1170,7 +1170,7 @@ def daily_results_text(items, videos):
     by_league = {}
     for label, m in sorted(items, key=lambda x: x[1]["dt"]):
         by_league.setdefault(label, []).append(m)
-    footer = f'\n<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n<b>FUTBOL OLAMI</b>"
+    footer = f'\n👉 <a href="{e(link)}">FUTBOL OLAMI</a> 👈' if link else "\n<b>FUTBOL OLAMI</b>"
     blocks, cur = [], "📊 <b>So'nggi 24 soat natijalari</b>\n"
     for label, ms in sorted(by_league.items(), key=lambda kv: PRIORITY.index(LEAGUE_CODE.get(kv[0])) if LEAGUE_CODE.get(kv[0]) in PRIORITY else 99):
         block = f"\n{FLAG_EMOJI.get(LEAGUE_CODE.get(label), '🏆')} <b>{e(league_title(label), quote=False)}</b>\n"

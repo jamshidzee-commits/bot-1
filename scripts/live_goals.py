@@ -56,7 +56,7 @@ def caption(label, m, g, minute):
         tail = " (penalti)" if g["pen"] else " (avtogol)" if g["og"] else ""
         lines.append(f"\n⚽ Gol: {e(g['name'], quote=False)}{tail} {e(g['min'], quote=False)}")
     lines.append(f'\n🔗 <a href="{e(m["link"])}">Statistika</a>')
-    lines.append(f'\n<a href="{e(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n<b>FUTBOL OLAMI</b>")
+    lines.append(f'\n👉 <a href="{e(link)}">FUTBOL OLAMI</a> 👈' if link else "\n<b>FUTBOL OLAMI</b>")
     return "\n".join(lines)
 
 
@@ -102,7 +102,7 @@ def post_red(label, m, e, hg, ag, upto):
            f"⚽ <b>{ee(m['home'], quote=False)} {hg}:{ag} {ee(m['away'], quote=False)}</b>",
            f"🏆 {ee(league_title(label), quote=False)}",
            f'\n🔗 <a href="{ee(m["link"])}">Statistika</a>',
-           f'\n<a href="{ee(link)}">FUTBOL OLAMI</a> ✈️' if link else "\n<b>FUTBOL OLAMI</b>"]
+           f'\n👉 <a href="{ee(link)}">FUTBOL OLAMI</a> 👈' if link else "\n<b>FUTBOL OLAMI</b>"]
     return bool(send_photo(img, "\n".join(cap)))
 
 
