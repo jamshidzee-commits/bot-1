@@ -136,6 +136,7 @@ def uploads(ch_id, pages=1):
 
 def resolve_channels(s):
     resolve_qsport(s)
+    resolve_setanta(s)
     found = s.setdefault("channels", {})
     for code, (need, handles) in LEAGUE_HANDLES.items():
         for h in handles:
@@ -169,12 +170,42 @@ def resolve_qsport(s):
         if "qsport" in it["snippet"]["title"].lower():
             found["qsport"] = it["id"]
 
+def resolve_setanta(s):
+    """Setanta Sports Premier League: rus tilida «Команда VS Команда - Обзор» roliklari. Handle noma'lum bo'lsa — bir marta qidiruv (maks 3 urinish)."""
+    found = s.setdefault("channels", {})
+    if "setanta" in found or s.get("setanta_tries", 0) >= 3:
+        return
+    s["setanta_tries"] = s.get("setanta_tries", 0) + 1
+    def ok(title):
+        t = title.lower()
+        return "setanta" in t and "premier" in t
+    try:
+        for h in ("SetantaSportsPremierLeague", "SetantaSportsPL"):
+            r = requests.get("https://www.googleapis.com/youtube/v3/channels",
+                             params={"key": YT_KEY, "part": "snippet", "forHandle": "@" + h}, timeout=30).json()
+            for it in r.get("items", []):
+                print("YT CHANNEL setanta ->", it["id"], it["snippet"]["title"])
+                if ok(it["snippet"]["title"]):
+                    found["setanta"] = it["id"]
+                    return
+        r = requests.get("https://www.googleapis.com/youtube/v3/search",
+                         params={"key": YT_KEY, "part": "snippet", "type": "channel", "q": "Setanta Sports Premier League",
+                                 "maxResults": 5}, timeout=30).json()
+        for it in r.get("items", []):
+            print("YT SEARCH setanta ->", it["snippet"]["channelId"], it["snippet"]["title"])
+            if ok(it["snippet"]["title"]):
+                found["setanta"] = it["snippet"]["channelId"]
+                return
+    except Exception as e:
+        print("YT CHANNEL ERROR setanta", e)
+
 def channels_for(s, code):
     ids = [cid for cid, (_, codes) in OFFICIAL_CHANNELS.items() if code in codes]
     if s.get("channels", {}).get(code):
         ids.append(s["channels"][code])
-    if s.get("channels", {}).get("qsport"):
-        ids.append(s["channels"]["qsport"])
+    for extra in ("qsport", "setanta"):
+        if s.get("channels", {}).get(extra):
+            ids.append(s["channels"][extra])
     return ids
 
 _RU = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
@@ -193,7 +224,13 @@ RU_ALIASES = {"бавария": "bayern", "псж": "psg", "псв": "psv", "б�
               "севилья": "sevilla", "валенсия": "valencia", "реал сосьедад": "real sociedad", "реал мадрид": "real madrid",
               "барселона": "barcelona", "ливерпуль": "liverpool", "арсенал": "arsenal", "челси": "chelsea",
               "манчестер сити": "manchester city", "манчестер юнайтед": "manchester united", "наполи": "napoli",
-              "аталанта": "atalanta", "болонья": "bologna", "фиорентина": "fiorentina", "штутгарт": "stuttgart"}
+              "аталанта": "atalanta", "фулхэм": "fulham", "фулхем": "fulham", "вулверхэмптон": "wolverhampton",
+              "вулверхемптон": "wolverhampton", "борнмут": "bournemouth", "брайтон": "brighton", "брентфорд": "brentford",
+              "кристал пэлас": "crystal palace", "лидс": "leeds", "лестер": "leicester", "ноттингем форест": "nottingham",
+              "ноттингем": "nottingham", "саутгемптон": "southampton", "сандерленд": "sunderland", "бернли": "burnley",
+              "ипсвич": "ipswich", "вест хэм": "west ham", "вест хем": "west ham", "астон вилла": "aston villa",
+              "ньюкасл юнайтед": "newcastle", "манчестер юнайтед": "manchester united", "ман сити": "manchester city",
+              "ман юнайтед": "manchester united", "болонья": "bologna", "фиорентина": "fiorentina", "штутгарт": "stuttgart"}
 
 def _translit(txt):
     return "".join(_RU.get(ch, ch) for ch in norm(txt))
@@ -215,8 +252,8 @@ def ru_title_match(title, m):
     t = norm(title)
     if "обзор" not in t:
         return False
-    head = re.split(r"\.\s", title, maxsplit=1)[0]
-    parts = re.split(r"\s+[–—-]\s+", head)
+    head = re.split(r"\s+[–—-]\s+(?=обзор)|\.\s", title, maxsplit=1, flags=re.I)[0]
+    parts = re.split(r"\s+(?:vs\.?|[–—-])\s+", head, flags=re.I)
     if len(parts) != 2:
         return False
     a, b = parts
