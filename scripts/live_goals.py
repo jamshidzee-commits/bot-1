@@ -81,11 +81,11 @@ def post_goal(label, m, g, hg, ag, upto, minute, state=None, code=None):
         if gif and _send_gif(CHANNEL_ID, gif, cap):
             if GROUP_ID:
                 _send_gif(GROUP_ID, gif, cap)
-            return True
+            return {"ids": {}, "cap": cap}
     ids = send_photo(img, cap)
     if state is not None:
         goal_clips.register(state, ids, code, m, g, hg, ag, minute)
-    return bool(ids)
+    return {"ids": ids, "cap": cap} if ids else None
 
 
 def post_red(label, m, e, hg, ag, upto):
@@ -104,6 +104,85 @@ def post_red(label, m, e, hg, ag, upto):
            f'\n🔗 <a href="{ee(m["link"])}">Statistika</a>',
            f'\n👉 <a href="{ee(link)}">FUTBOL OLAMI</a> 👈' if link else "\n<b>FUTBOL OLAMI</b>"]
     return bool(send_photo(img, "\n".join(cap)))
+
+
+def _tg(method, **data):
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/{method}", json=data, timeout=30)
+        print("TELEGRAM", method, data.get("chat_id"), ":", r.status_code, r.text[:150])
+        return r.ok
+    except Exception as ex:
+        print("TELEGRAM", method, "xato:", ex)
+        return False
+
+
+def post_cancel(label, m, p):
+    """VAR gol(ni) bekor qildi: eski postni belgilaydi va to'g'ri hisob bilan javob yuboradi."""
+    e = html.escape
+    link, _ = channel_info()
+    who = ""
+    if p and p.get("name"):
+        tail = " (avtogol)" if p.get("og") else ""
+        who = f"\n{e(p['name'], quote=False)}{tail} {e(p.get('min', ''), quote=False)}"
+    lines = ["❌ <b>GOL BEKOR QILINDI</b> (VAR)" + who,
+             f"⚽ <b>{e(m['home'], quote=False)} {m['hg']}:{m['ag']} {e(m['away'], quote=False)}</b>",
+             f"🏆 {e(league_title(label), quote=False)}",
+             f'\n🔗 <a href="{e(m["link"])}">Statistika</a>',
+             f'\n👉 <a href="{e(link)}">FUTBOL OLAMI</a> 👈' if link else "\n<b>FUTBOL OLAMI</b>"]
+    text = "\n".join(lines)
+    chats = [CHANNEL_ID] + ([GROUP_ID] if GROUP_ID else [])
+    ids = (p or {}).get("ids") or {}
+    for chat in chats:
+        mid = ids.get(chat) or ids.get(str(chat))
+        if mid and p.get("cap"):
+            _tg("editMessageCaption", chat_id=chat, message_id=mid, parse_mode="HTML",
+                caption="❌ <b>BEKOR QILINDI (VAR)</b>\n" + p["cap"])
+        _tg("sendMessage", chat_id=chat, text=text, parse_mode="HTML", link_preview_options={"is_disabled": True},
+            **({"reply_parameters": {"message_id": mid, "allow_sending_without_reply": True}} if mid else {}))
+        time.sleep(1)
+
+
+def check_cancelled(label, m, rec, state):
+    """Avval yuborilgan gol voqealar ro'yxatidan yo'qolsa va hisob kamaysa (VAR) — bekor qilinganini e'lon qiladi.
+    API xatosidan himoya: 2 ta ketma-ket so'rovda tasdiqlanishi kerak."""
+    cur = {f"{e['side']}|{e['name']}|{e['min']}|{int(e['og'])}" for e in m["events"] if e["kind"] == "goal"}
+    seen_goals = [k for k in rec["seen"] if not k.startswith("red|")]
+    accounted = len(seen_goals) + rec["generic"]
+    total = m["hg"] + m["ag"]
+    if total >= accounted:
+        rec["cx"] = 0
+        return
+    rec["cx"] = rec.get("cx", 0) + 1
+    if rec["cx"] < 2:
+        return
+    rec["cx"] = 0
+    n = accounted - total
+    missing = [k for k in seen_goals if k not in cur]
+    # nom/ism keyin to'ldirilgan bo'lsa (bir xil jamoa va daqiqa) — bu bekor qilish emas, eski kalit
+    stale = [k for k in missing if any(c.split("|")[0] == k.split("|")[0] and c.split("|")[2] == k.split("|")[2]
+                                        and c in rec["seen"] for c in cur)]
+    for k in stale:
+        rec["seen"].remove(k)
+        n -= 1
+        missing.remove(k)
+    for k in missing[-n:] if n > 0 else []:
+        rec["seen"].remove(k)
+        n -= 1
+        p = next((x for x in rec.get("posted", []) if x["key"] == k and not x.get("cancelled")), None)
+        print("GOAL CANCELLED:", m["home"], m["hg"], m["ag"], m["away"], k)
+        if p:
+            p["cancelled"] = True
+            for it in state.get("goal_clips", []):  # bekor qilingan gol uchun video qidirmaymiz
+                if it.get("ids") == p.get("ids"):
+                    it["done"] = True
+            if not TEST_MODE:
+                post_cancel(label, m, p)
+    while n > 0 and rec["generic"] > 0:  # tafsilotsiz yuborilgan gol bekor bo'ldi
+        rec["generic"] -= 1
+        n -= 1
+        print("GOAL CANCELLED (no details):", m["home"], m["hg"], m["ag"], m["away"])
+        if not TEST_MODE:
+            post_cancel(label, m, None)
 
 
 def process_live(label, ev, state, code=None):
@@ -147,8 +226,14 @@ def process_live(label, ev, state, code=None):
             continue  # eski gol — takrorlab yubormaymiz
         print("GOAL:", m["home"], hg, ag, m["away"], e["name"], e["min"])
         if not TEST_MODE:
-            post_goal(label, m, e, hg, ag, idx + 1, e["min"], state, code)
+            res = post_goal(label, m, e, hg, ag, idx + 1, e["min"], state, code)
+            if res:
+                rec.setdefault("posted", []).append({"key": key, "name": e["name"], "min": e["min"], "og": e["og"],
+                                                      "ids": res["ids"], "cap": res["cap"]})
+                rec["posted"] = rec["posted"][-12:]
             time.sleep(3.5)
+    if not first_sight:
+        check_cancelled(label, m, rec, state)
     # tafsilotsiz gol: hisob oshgan, lekin voqea ro'yxatida yo'q (2 ta ketma-ket so'rovdan keyin yuboriladi)
     accounted = sum(1 for k in rec["seen"] if not k.startswith("red|")) + rec["generic"]
     total = m["hg"] + m["ag"]
