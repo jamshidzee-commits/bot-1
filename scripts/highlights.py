@@ -44,7 +44,7 @@ def finished_matches():
     now = datetime.now(TASHKENT)
     out = []
     for code, league in LEAGUES.items():
-        for i in (range(7, -1, -1) if TEST else (3, 2, 1, 0)):
+        for i in (range(7, -1, -1) if TEST else (1, 0)):
             d = (now - timedelta(days=i)).strftime("%Y%m%d")
             try:
                 evs = requests.get(ESPN.format(code=code), params={"dates": d}, timeout=30).json().get("events", [])
@@ -69,7 +69,7 @@ def finished_matches():
 OFFICIAL_CHANNELS = {
     "UCyGa1YEx9ST66rYrJTGIKOw": ("UEFA", ["uefa.champions", "uefa.europa"]),
 }
-MAX_TRIES = 200  # обзор ищем до ~3 суток после матча (поиск каждые 30 мин, дешёвый)
+MAX_TRIES = 50  # обзор ищем до 24 часов после матча (поиск каждые 30 мин, дешёвый)
 
 # Rasmiy liga kanallari: ID ni bot o'zi handle bo'yicha topadi va kanal nomini tekshiradi
 # (nomi mos kelmasa — o'tkazib yuboradi, noto'g'ri kanaldan video olmaydi).
@@ -589,7 +589,7 @@ def offer_new(s):
             break
         if (m["id"] in videos or m["id"] in s["offered"]) and not TEST:
             continue
-        if now - m["end"] > timedelta(days=8 if TEST else 3):
+        if now - m["end"] > timedelta(days=8 if TEST else 1):
             continue
         if not channels_for(s, m["code"]):
             continue
