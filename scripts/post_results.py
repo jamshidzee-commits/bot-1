@@ -653,6 +653,10 @@ def _clash_bg(m, H, top_zone):
     return img
 
 
+CARD_ROWS = 5  # har tomonda ko'pi bilan 5 ta voqea (qolgani "+N")
+CARD_H = 640 + (70 + CARD_ROWS * 46 + 20 + 30) + (130 + 30) + 170  # = 1320: kartochkaning doimiy balandligi
+
+
 def make_result_card(label, m, live=None):
     """Tugagan o'yin: fon — ikki jamoa qarama-qarshiligi (jamoa ranglari + katta logotiplar),
     hisob, gollar (daqiqa bilan), qizil kartochkalar va o'yin qahramoni."""
@@ -663,13 +667,14 @@ def make_result_card(label, m, live=None):
     else:
         hero = match_hero(events, m["hg"], m["ag"]) if events else None
     rows = max(sum(1 for e in events if e["side"] == "home"), sum(1 for e in events if e["side"] == "away"))
-    rows = min(rows, 8)
+    rows = min(rows, CARD_ROWS)
     row_h = 46
     top_zone = 640
     panel_h = (70 + rows * row_h + 20) if events else 0
     hero_h = 130 if hero else 0
     foot_h = 170
     H = top_zone + (panel_h + 30 if events else 0) + (hero_h + 30 if hero else 0) + foot_h
+    H = max(H, CARD_H)  # barcha kartochkalar bir xil o'lchamda (gol, yakuniy hisob) — kamroq voqea bo'lsa, pastda bo'sh joy
 
     img = _clash_bg(m, H, top_zone)
     d = ImageDraw.Draw(img, "RGBA")
@@ -730,8 +735,8 @@ def make_result_card(label, m, live=None):
         d.text((540, y + 34), "O'YIN VOQEALARI", font=F(24, True), fill=(160, 220, 255, 255), anchor="mm")
         for side, x0 in (("home", 75), ("away", 575)):
             evs = [e for e in events if e["side"] == side]
-            extra = max(0, len(evs) - 8)
-            for i, e in enumerate(evs[:8]):
+            extra = max(0, len(evs) - CARD_ROWS)
+            for i, e in enumerate(evs[:CARD_ROWS]):
                 cy = y + 70 + i * row_h + 23
                 if e["kind"] == "goal":
                     _ball(d, x0 + 12, cy)
@@ -745,7 +750,7 @@ def make_result_card(label, m, live=None):
                 d.text((x0 + 42 + d.textlength(name, font=f) + 14, cy), mn, font=F(28, True),
                        fill=(255, 215, 90, 255) if e["kind"] == "goal" else (255, 120, 120, 255), anchor="lm")
             if extra:
-                d.text((x0 + 42, y + 70 + 8 * row_h + 12), f"+{extra}", font=F(22), fill=(200, 225, 240, 255), anchor="lm")
+                d.text((x0 + 42, y + 70 + CARD_ROWS * row_h + 12), f"+{extra}", font=F(22), fill=(200, 225, 240, 255), anchor="lm")
         y += panel_h + 30
     if hero:
         red = bool(live and live.get("red"))
