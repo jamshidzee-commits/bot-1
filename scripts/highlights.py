@@ -317,9 +317,10 @@ def handle_contact(s, msg):
             r = tg("copyMessage", chat_id=target, from_chat_id=chat["id"], message_id=msg["message_id"])
             tg("sendMessage", chat_id=ADMIN_ID, reply_to_message_id=msg["message_id"],
                text="✅ Javob yuborildi" if r.get("ok") else "❌ Yuborilmadi (foydalanuvchi botni bloklagan bo'lishi mumkin)")
-        elif text.startswith("/start"):
-            tg("sendMessage", chat_id=ADMIN_ID,
-               text="Siz adminsiz. Foydalanuvchi xabariga <b>reply</b> qilib javob bering — javob botdan uning o'ziga boradi.",
+        elif text.startswith("/start") or cmap:
+            # reply qilinmagan oddiy xabar: hech kimga yuborilmaydi — qanday javob berishni eslatamiz
+            tg("sendMessage", chat_id=ADMIN_ID, reply_to_message_id=msg["message_id"],
+               text="↩️ Javob foydalanuvchiga ketishi uchun uning xabariga (yoki ✉️ sarlavhaga) <b>reply</b> qiling: xabarni bosib turing → «Ответить».",
                parse_mode="HTML")
         return
     if text.startswith("/start"):
