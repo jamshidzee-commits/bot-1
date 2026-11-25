@@ -135,6 +135,7 @@ def uploads(ch_id, pages=1):
     return _uploads[key]
 
 def resolve_channels(s):
+    resolve_qsport(s)
     found = s.setdefault("channels", {})
     for code, (need, handles) in LEAGUE_HANDLES.items():
         for h in handles:
@@ -152,11 +153,74 @@ def resolve_channels(s):
                     found[code] = it["id"]
                     break
 
+def resolve_qsport(s):
+    """Qsport Uzbekistan (@QsportUzbekistan): rus tilida «Обзор матча» roliklari — barcha ligalar uchun qo'shimcha manba."""
+    found = s.setdefault("channels", {})
+    if "qsport" in found:
+        return
+    try:
+        r = requests.get("https://www.googleapis.com/youtube/v3/channels",
+                         params={"key": YT_KEY, "part": "snippet", "forHandle": "@QsportUzbekistan"}, timeout=30).json()
+    except Exception as e:
+        print("YT CHANNEL ERROR qsport", e)
+        return
+    for it in r.get("items", []):
+        print("YT CHANNEL qsport ->", it["id"], it["snippet"]["title"])
+        if "qsport" in it["snippet"]["title"].lower():
+            found["qsport"] = it["id"]
+
 def channels_for(s, code):
     ids = [cid for cid, (_, codes) in OFFICIAL_CHANNELS.items() if code in codes]
     if s.get("channels", {}).get(code):
         ids.append(s["channels"][code])
+    if s.get("channels", {}).get("qsport"):
+        ids.append(s["channels"]["qsport"])
     return ids
+
+_RU = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+                ["a","b","v","g","d","e","e","zh","z","i","i","k","l","m","n","o","p","r","s","t","u","f","kh","ts","ch","sh","sch","","y","","e","yu","ya"]))
+# Rus nomlari qisqa -> lotin kalit (translit mos kelmaydigan klublar uchun)
+RU_ALIASES = {"бавария": "bayern", "псж": "psg", "псв": "psv", "боруссия дортмунд": "dortmund", "боруссия д": "dortmund",
+              "боруссия м": "gladbach", "байер": "leverkusen", "тоттенхэм": "tottenham", "тоттенхем": "tottenham",
+              "ювентус": "juventus", "атлетико": "atletico", "атлетик": "athletic", "интер": "inter", "милан": "milan",
+              "рома": "roma", "лацио": "lazio", "зальцбург": "salzburg", "црвена звезда": "crvena", "црвена звезда": "red star",
+              "ньюкасл": "newcastle", "эвертон": "everton", "вест хэм": "west ham", "брюгге": "brugge", "бенфика": "benfica",
+              "спортинг": "sporting", "порту": "porto", "аякс": "ajax", "фейеноорд": "feyenoord", "олимпиакос": "olympiacos",
+              "галатасарай": "galatasaray", "фенербахче": "fenerbahce", "бешикташ": "besiktas", "базель": "basel",
+              "шахтер": "shakhtar", "динамо киев": "dynamo kyiv", "лейпциг": "leipzig", "айнтрахт": "frankfurt",
+              "лилль": "lille", "ницца": "nice", "марсель": "marseille", "лион": "lyon", "монако": "monaco", "ланс": "lens",
+              "селтик": "celtic", "рейнджерс": "rangers", "кайрат": "kairat", "бодо глимт": "bodo", "вильярреал": "villarreal",
+              "севилья": "sevilla", "валенсия": "valencia", "реал сосьедад": "real sociedad", "реал мадрид": "real madrid",
+              "барселона": "barcelona", "ливерпуль": "liverpool", "арсенал": "arsenal", "челси": "chelsea",
+              "манчестер сити": "manchester city", "манчестер юнайтед": "manchester united", "наполи": "napoli",
+              "аталанта": "atalanta", "болонья": "bologna", "фиорентина": "fiorentina", "штутгарт": "stuttgart"}
+
+def _translit(txt):
+    return "".join(_RU.get(ch, ch) for ch in norm(txt))
+
+def _ru_team_ok(ru_name, en_name):
+    """Rus nomi ("Реал Мадрид") inglizcha nomga ("Real Madrid") mos keladimi."""
+    from difflib import SequenceMatcher
+    ru = " ".join(norm(ru_name).replace("-", " ").split())
+    keys = set(team_keys(en_name)) | {norm(en_name)}
+    for k, v in RU_ALIASES.items():
+        if ru == k or ru.startswith(k):  # nom jadvalda bor — faqat shunga qarab hal qilamiz (City/United adashmasligi uchun)
+            return any(v in key for key in keys)
+    tr = _translit(ru)
+    return any(tr == key or SequenceMatcher(None, tr, key).ratio() >= 0.85 for key in keys)
+
+def ru_title_match(title, m):
+    """Qsport: «Реал Мадрид – ПСВ. Обзор матча Лиги чемпионов. 24.11.2026»."""
+    t = norm(title)
+    if "обзор" not in t:
+        return False
+    head = re.split(r"\.\s", title, maxsplit=1)[0]
+    parts = re.split(r"\s+[–—-]\s+", head)
+    if len(parts) != 2:
+        return False
+    a, b = parts
+    return ((_ru_team_ok(a, m["home"]) and _ru_team_ok(b, m["away"])) or
+            (_ru_team_ok(a, m["away"]) and _ru_team_ok(b, m["home"])))
 
 def find_video(m, s):
     """Ищет обзор только на официальных каналах: в названии обе команды (с учётом сокращений),
@@ -172,6 +236,8 @@ def find_video(m, s):
             t = norm(title)
             if when < after or any(w in t for w in SKIP_WORDS):
                 continue
+            if ru_title_match(title, m):
+                return f"https://www.youtube.com/watch?v={vid}"
             if not ("highlight" in t or re.search(r"\d\s*[-–:]\s*\d", t)):
                 continue
             if any(k in t for k in hk) and any(k in t for k in ak):
