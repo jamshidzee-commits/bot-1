@@ -176,6 +176,17 @@ def find_video(m, s):
                 continue
             if any(k in t for k in hk) and any(k in t for k in ak):
                 return f"https://www.youtube.com/watch?v={vid}"
+    # Diagnostika: topilmasa, kanaldagi so'nggi sarlavhalarni holatga yozamiz (nima uchun mos kelmaganini ko'rish uchun)
+    try:
+        recent = []
+        for ch_id in channels_for(s, m["code"]):
+            recent += [f"{pub[5:16]} {title}" for title, pub, _ in uploads(ch_id, pages=1)[:12]]
+        dbg = s.setdefault("debug_miss", {})
+        dbg[m["id"]] = {"match": f"{m['home']} - {m['away']}", "keys": [hk, ak], "recent": recent[:12]}
+        for k in list(dbg)[:-4]:
+            dbg.pop(k)
+    except Exception as e:
+        print("DEBUG MISS xato:", e)
     return None
 
 def text(m, url):

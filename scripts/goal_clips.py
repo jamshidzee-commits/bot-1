@@ -61,6 +61,11 @@ def check(state):
                     item["done"] = True
                     used.add(vid)
                     break
+            if not item.get("done"):  # diagnostika: kanalning so'nggi sarlavhalari
+                state.setdefault("clip_debug", {})[f"{item['home']}|{item['name']}|{item['min']}"] = [
+                    f"{pub[5:16]} {title}" for title, pub, _ in H.uploads(ch_id)[:10]]
+                for k in list(state["clip_debug"])[:-3]:
+                    state["clip_debug"].pop(k)
             if item.get("done"):
                 break
     state["clip_used"] = sorted(used)[-300:]
