@@ -15,7 +15,17 @@ from post_results import (LEAGUES, LEAGUE_STYLE, TASHKENT, MONTHS, DAYS, F, W, g
 # O'zbekiston terma jamoasi ishtirok etadigan guruh bosqichi turnirlari — o'yindan keyin O'zbekiston guruhi jadvali
 GROUP_LEAGUES = ["fifa.world.u17", "fifa.world.u20", "fifa.world"]
 GROUP_AFTER_HOURS = 30
-TABLE_LEAGUES = ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "por.1", "ned.1", "tur.1", "ksa.1"]
+# Jadval qaysi kuni (0=dushanba … 6=yakshanba) va soat nechadan keyin chiqadi — faqat tur tugagach.
+TABLE_SCHEDULE = {"uefa.champions": {3}, "uefa.europa": {4}, "uefa.europa.conf": {4},
+                  "eng.1": {0}, "esp.1": {0}, "ita.1": {0}, "ger.1": {0}, "fra.1": {0}}
+TABLE_FROM_HOUR = 9
+TABLE_LEAGUES = list(TABLE_SCHEDULE)
+
+
+def table_hash(code, rows):
+    import hashlib
+    raw = "|".join(f"{r['rank']}:{r['pts']}:{r['p']}" for r in rows)
+    return f"tablehash-{code}-" + hashlib.md5(raw.encode()).hexdigest()[:10]
 STANDINGS = "https://site.api.espn.com/apis/v2/sports/soccer/{code}/standings"
 AFTER_HOURS, BEFORE_HOURS = 30, 40
 
@@ -177,17 +187,24 @@ def caption(code):
 
 def post_tables(now, sent):
     """Tugagan har bir tur uchun jadval. Bir ishga tushishda bitta jadval (kanalni to'ldirmaslik uchun)."""
-    for code in TABLE_LEAGUES:
+    for code, days in TABLE_SCHEDULE.items():
+        if now.weekday() not in days or now.hour < TABLE_FROM_HOUR:
+            continue
         key = round_key(code, now)
         if not key or key in sent:
             continue
         rows = fetch_table(code)
         if len(rows) < 8:
             continue
+        hk = table_hash(code, rows)
+        if hk in sent:  # jadval o'zgarmagan (masalan, pley-off bosqichida) — qayta yubormaymiz
+            sent.add(key)
+            continue
         print("TABLE:", code, key)
         if not TEST_MODE:
-            if send_photo(make_table_image(code, rows, now), caption(code)):
-                sent.add(key)
+            sub = "LIGA BOSQICHI JADVALI" if code.startswith("uefa.") else "TURNIR JADVALI"
+            if send_photo(make_table_image(code, rows, now, sub_text=sub), caption(code)):
+                sent.add(key); sent.add(hk)
         return
 
 
