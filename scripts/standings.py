@@ -52,7 +52,7 @@ def fetch_table(code, team=None):
         r = requests.get(STANDINGS.format(code=code), timeout=30)
         r.raise_for_status()
         children = r.json()["children"]
-        child = children[0]
+        child = max(children, key=lambda c: len(c.get("standings", {}).get("entries", [])))  # eng ko'p jamoali jadval (ЛЧ da bir nechta bo'lim bor)
         if team:
             child = next(c for c in children
                          if any(team in (en.get("team", {}).get("displayName", "") or "").lower()
