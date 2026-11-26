@@ -1,0 +1,28 @@
+name: Jadval (bir marta)
+
+# Qo'lda ishga tushiriladi: tanlangan turnir jadvalini kanalga bir marta yuboradi.
+on:
+  workflow_dispatch:
+    inputs:
+      code:
+        description: "ESPN turnir kodi (masalan uefa.champions)"
+        default: "uefa.champions"
+
+jobs:
+  table:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests Pillow
+      - name: Jadvalni yuborish
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+          GROUP_ID: ${{ secrets.GROUP_ID }}
+          TABLE_CODE: ${{ inputs.code }}
+        run: python scripts/post_table_once.py
