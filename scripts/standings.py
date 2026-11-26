@@ -65,11 +65,11 @@ def fetch_table(code, team=None):
     rows = []
     for e in entries:
         st = {s["name"]: s.get("value") for s in e.get("stats", [])}
-        team = e.get("team", {})
-        logos = team.get("logos") or [{}]
+        tm = e.get("team", {})
+        logos = tm.get("logos") or [{}]
         note = e.get("note") or {}
         try:
-            rows.append({"rank": int(st.get("rank") or 0), "name": team.get("displayName", "?"),
+            rows.append({"rank": int(st.get("rank") or 0), "name": tm.get("displayName", "?"),
                          "logo": logos[0].get("href"), "p": int(st.get("gamesPlayed") or 0),
                          "w": int(st.get("wins") or 0), "d": int(st.get("ties") or 0), "l": int(st.get("losses") or 0),
                          "gd": int(st.get("pointDifferential") or 0), "pts": int(st.get("points") or 0),

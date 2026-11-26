@@ -11,19 +11,6 @@ now = datetime.now(TASHKENT)
 rows = fetch_table(code)
 print("rows:", len(rows))
 if len(rows) < 8:
-    import requests
-    from standings import STANDINGS
-    j = requests.get(STANDINGS.format(code=code), timeout=30).json()
-    print("KEYS", list(j.keys()))
-    for c in j.get("children", []):
-        print("CHILD", c.get("name"), len(c.get("standings", {}).get("entries", [])))
-    for u in ("https://site.api.espn.com/apis/v2/sports/soccer/%s/standings?season=2026&level=3" % code,):
-        jj = requests.get(u, timeout=30).json()
-        for c in jj.get("children", []):
-            print("CHILD2", c.get("name"), len(c.get("standings", {}).get("entries", [])))
-    ent = j["children"][0]["standings"]["entries"]
-    for e in ent[:2] + ent[20:22]:
-        print("ENT", e.get("team", {}).get("displayName"), {s["name"]: s.get("value") for s in e.get("stats", [])})
     raise SystemExit("jadval topilmadi")
 img = make_table_image(code, rows, now, sub_text="LIGA BOSQICHI JADVALI")
 if os.environ.get("PREVIEW"):
