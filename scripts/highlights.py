@@ -375,9 +375,9 @@ def handle_buttons(s):
             else:
                 video = item.get("video")
                 if video:  # yangi format: video tepada o'ynaydi, matn pastda
-                    send_news(CHANNEL_ID, item["text"], video, small=True)
+                    send_news(CHANNEL_ID, item["text"], video)
                     if GROUP_ID:
-                        send_news(GROUP_ID, item["text"], video, small=True)
+                        send_news(GROUP_ID, item["text"], video)
                 else:  # eski (kutib turgan) takliflar
                     tg("sendMessage", chat_id=CHANNEL_ID, text=item["text"], parse_mode="HTML")
                     if GROUP_ID:
@@ -663,11 +663,11 @@ def offer_new(s):
             continue
         t = text(m, url)
         # Tasdiqsiz: sharh to'g'ridan-to'g'ri kanalga (va guruhga) chiqadi, video Telegramning o'zida o'ynaydi
-        r = send_news(CHANNEL_ID, t, url, small=True)
+        r = send_news(CHANNEL_ID, t, url)
         if not r.get("ok"):
             continue  # keyingi ishga tushirishda qayta uriniladi
         if GROUP_ID:
-            send_news(GROUP_ID, t, url, small=True)
+            send_news(GROUP_ID, t, url)
         videos[m["id"]] = url  # jadvallarda "Obzor" havolasi sifatida ham ishlatiladi
         s["offered"][m["id"]] = {"text": t, "video": url, "done": "published"}
         sent += 1
