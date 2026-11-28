@@ -108,6 +108,27 @@ def post(label, vid, title, channel):
            link_preview_options={"url": url, "prefer_small_media": True, "show_above_text": True})
     return bool(r.get("ok"))
 
+def send_now(kind="skills"):
+    """Admin buyrug'i /video [skills|goals|memes]: jadvalga qaramay hoziroq bitta video joylaydi (sinov uchun).
+    Qaytaradi: (muvaffaqiyat, xabar)."""
+    s = load()
+    for k, hhmm, label, queries, days, min_views in SLOTS:
+        if k != kind:
+            continue
+        try:
+            found = pick(k, queries, days, min_views, s)
+        except Exception as e:
+            return False, f"YouTube xato: {e}"
+        if not found:
+            return False, "Mos video topilmadi (YouTube kvotasi yoki so'rov natijasi bo'sh)."
+        vid, title, channel = found
+        if post(label, vid, title, channel):
+            s["posted"].append(vid)
+            save(s)
+            return True, f"✅ Kanalga joylandi: {title}"
+        return False, "Telegram kanalga yubormadi (bot huquqlarini tekshiring)."
+    return False, "Noma'lum tur. Mavjud: skills, goals, memes"
+
 def main():
     s = load()
     now = datetime.now(TASHKENT)

@@ -310,6 +310,13 @@ def handle_contact(s, msg):
     uid, text = str(msg["from"]["id"]), msg.get("text") or ""
     c = s.setdefault("contact", {})
     cmap = c.setdefault("map", {})
+    if uid == str(ADMIN_ID) and text.split("@")[0].lower().startswith("/video"):
+        parts = text.split()
+        kind = parts[1].lower() if len(parts) > 1 else "skills"
+        import daily_videos
+        ok, info = daily_videos.send_now(kind)
+        tg("sendMessage", chat_id=ADMIN_ID, text=info)
+        return
     if uid == str(ADMIN_ID):
         rep = msg.get("reply_to_message")
         target = cmap.get(str(rep["message_id"])) if rep else None
