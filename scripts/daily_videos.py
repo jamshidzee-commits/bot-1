@@ -12,21 +12,20 @@ TG = f"https://api.telegram.org/bot{BOT}/"
 TASHKENT = ZoneInfo("Asia/Tashkent")
 STATE = "daily_videos.json"
 
-# (kalit, Toshkent vaqti, sarlavha, qidiruv so'rovlari — kun bo'yicha aylanadi, necha kunlik, minimal ko'rishlar)
+# (kalit, Toshkent vaqti, sarlavha, qidiruv so'rovlari — kun bo'yicha aylanadi, necha kunlik, minimal ko'rishlar, maks. soniya)
 SLOTS = [
     ("skills", "11:00", "🔥 Kun skili", [
         "Messi skills", "Cristiano Ronaldo skills", "Neymar skills", "Lamine Yamal skills", "Mbappe skills",
         "Vinicius Junior skills", "Ronaldinho skills", "Zidane skills", "Haaland skills", "Salah skills",
-        "Maradona skills", "Kvaratskhelia skills", "Bellingham skills", "best football skills dribbling"], 0, 20000),
+        "Maradona skills", "Kvaratskhelia skills", "Bellingham skills", "best football skills dribbling"], 0, 20000, 300),
     ("goals", "16:00", "⚽ Kun goli", [
         "best goals of the week football", "most beautiful goals football", "top goals this week",
-        "amazing goals compilation football"], 10, 30000),
+        "amazing goals compilation football"], 10, 30000, 300),
     ("memes", "20:30", "😂 Futbol memlari", [
-        "football memes", "funny football moments", "futbol memlari", "футбольные приколы", "football funny fails"], 30, 10000),
+        "football memes", "funny football moments", "futbol memlari", "футбольные приколы", "football funny fails"], 30, 10000, 60),
 ]
 BLOCK = ("bet", "1xbet", "casino", "promo code", "promocode", "18+", "nsfw", "sex", "gambling", "stavka", "ставк", "казино", "fifa 2",
          "efootball", "pes ", "gameplay")
-MAX_SECONDS = 300
 MAX_TRIES = 12
 
 def load():
@@ -71,7 +70,7 @@ def candidates(query, days):
                      params={"key": YT_KEY, "part": "snippet,contentDetails,statistics,status", "id": ",".join(ids)}).json()
     return v.get("items", [])
 
-def pick(kind, queries, days, min_views, s):
+def pick(kind, queries, days, min_views, max_sec, s):
     day = datetime.now(TASHKENT).toordinal()
     q = queries[day % len(queries)]
     for item in candidates(q, days):
@@ -82,7 +81,7 @@ def pick(kind, queries, days, min_views, s):
             continue
         if not item.get("status", {}).get("embeddable", False) or item.get("status", {}).get("madeForKids"):
             continue
-        if seconds(item["contentDetails"].get("duration")) > MAX_SECONDS:
+        if seconds(item["contentDetails"].get("duration")) > max_sec:
             continue
         if int(item.get("statistics", {}).get("viewCount", 0)) < min_views:
             continue
@@ -112,11 +111,11 @@ def send_now(kind="skills"):
     """Admin buyrug'i /video [skills|goals|memes]: jadvalga qaramay hoziroq bitta video joylaydi (sinov uchun).
     Qaytaradi: (muvaffaqiyat, xabar)."""
     s = load()
-    for k, hhmm, label, queries, days, min_views in SLOTS:
+    for k, hhmm, label, queries, days, min_views, max_sec in SLOTS:
         if k != kind:
             continue
         try:
-            found = pick(k, queries, days, min_views, s)
+            found = pick(k, queries, days, min_views, max_sec, s)
         except Exception as e:
             return False, f"YouTube xato: {e}"
         if not found:
@@ -133,13 +132,13 @@ def main():
     s = load()
     now = datetime.now(TASHKENT)
     today = now.strftime("%Y-%m-%d")
-    for kind, hhmm, label, queries, days, min_views in SLOTS:
+    for kind, hhmm, label, queries, days, min_views, max_sec in SLOTS:
         key = f"{today}:{kind}"
         if s["done"].get(key) or now.strftime("%H:%M") < hhmm or s["tries"].get(key, 0) >= MAX_TRIES:
             continue
         s["tries"][key] = s["tries"].get(key, 0) + 1
         try:
-            found = pick(kind, queries, days, min_views, s)
+            found = pick(kind, queries, days, min_views, max_sec, s)
         except Exception as e:
             print("YOUTUBE xato:", e)
             found = None
