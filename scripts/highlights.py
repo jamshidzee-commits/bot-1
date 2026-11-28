@@ -592,6 +592,8 @@ def send_news(chat_id, text, image, small=False, **extra):
     opts = {"url": image, "prefer_large_media": True, "show_above_text": True} if image else {"is_disabled": True}
     if image and small:  # YouTube-sharh: ixcham ko'rinish (kichik rasm yonida), joy kam egallanadi
         opts = {"url": image, "prefer_small_media": True, "show_above_text": True}
+        if image not in text:  # havola matnda bo'lsin (ko'rinmas), shunda Telegram oldindan ko'rinishni aniq quradi
+            text = f'<a href="{html.escape(image)}">&#8203;</a>' + text
     return tg("sendMessage", chat_id=chat_id, text=text, parse_mode="HTML", link_preview_options=opts, **extra)
 
 def offer_news(s):

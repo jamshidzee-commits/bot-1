@@ -101,7 +101,7 @@ def footer():
 
 def post(label, vid, title, channel):
     url = f"https://www.youtube.com/watch?v={vid}"
-    text = (f"<b>{label}</b>\n\n▶️ {html.escape(title, quote=False)}\n"
+    text = (f"<b>{label}</b>\n\n▶️ <a href=\"{url}\">{html.escape(title, quote=False)}</a>\n"
             f"📺 {html.escape(channel, quote=False)}\n\n{footer()}")
     r = tg("sendMessage", chat_id=CHANNEL_ID, text=text, parse_mode="HTML",
            link_preview_options={"url": url, "prefer_small_media": True, "show_above_text": True})
