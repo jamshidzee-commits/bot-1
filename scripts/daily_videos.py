@@ -105,7 +105,7 @@ def post(label, vid, title, channel):
     text = (f"<b>{label}</b>\n\n▶️ {html.escape(title, quote=False)}\n"
             f"📺 {html.escape(channel, quote=False)}\n\n{footer()}")
     r = tg("sendMessage", chat_id=CHANNEL_ID, text=text, parse_mode="HTML",
-           link_preview_options={"url": url, "prefer_large_media": True, "show_above_text": True})
+           link_preview_options={"url": url, "prefer_small_media": True, "show_above_text": True})
     return bool(r.get("ok"))
 
 def main():

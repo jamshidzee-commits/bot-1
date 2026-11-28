@@ -368,9 +368,9 @@ def handle_buttons(s):
             else:
                 video = item.get("video")
                 if video:  # yangi format: video tepada o'ynaydi, matn pastda
-                    send_news(CHANNEL_ID, item["text"], video)
+                    send_news(CHANNEL_ID, item["text"], video, small=True)
                     if GROUP_ID:
-                        send_news(GROUP_ID, item["text"], video)
+                        send_news(GROUP_ID, item["text"], video, small=True)
                 else:  # eski (kutib turgan) takliflar
                     tg("sendMessage", chat_id=CHANNEL_ID, text=item["text"], parse_mode="HTML")
                     if GROUP_ID:
@@ -581,8 +581,10 @@ def news_text(n):
         text = f'<a href="{html.escape(image)}">&#8203;</a>' + text
     return text, image
 
-def send_news(chat_id, text, image, **extra):
+def send_news(chat_id, text, image, small=False, **extra):
     opts = {"url": image, "prefer_large_media": True, "show_above_text": True} if image else {"is_disabled": True}
+    if image and small:  # YouTube-sharh: ixcham ko'rinish (kichik rasm yonida), joy kam egallanadi
+        opts = {"url": image, "prefer_small_media": True, "show_above_text": True}
     return tg("sendMessage", chat_id=chat_id, text=text, parse_mode="HTML", link_preview_options=opts, **extra)
 
 def offer_news(s):
@@ -652,11 +654,11 @@ def offer_new(s):
             continue
         t = text(m, url)
         # Tasdiqsiz: sharh to'g'ridan-to'g'ri kanalga (va guruhga) chiqadi, video Telegramning o'zida o'ynaydi
-        r = send_news(CHANNEL_ID, t, url)
+        r = send_news(CHANNEL_ID, t, url, small=True)
         if not r.get("ok"):
             continue  # keyingi ishga tushirishda qayta uriniladi
         if GROUP_ID:
-            send_news(GROUP_ID, t, url)
+            send_news(GROUP_ID, t, url, small=True)
         videos[m["id"]] = url  # jadvallarda "Obzor" havolasi sifatida ham ishlatiladi
         s["offered"][m["id"]] = {"text": t, "video": url, "done": "published"}
         sent += 1
