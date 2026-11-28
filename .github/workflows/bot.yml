@@ -45,8 +45,8 @@ jobs:
           # shuning uchun boshida eng so'nggi holatni (sent.json va h.k.) majburan olamiz, aks holda xabarlar takrorlanadi.
           git fetch -q origin main && git reset -q --hard origin/main
           save() {
-            touch sent.json highlights.json cards.json live.json
-            git add sent.json highlights.json cards.json live.json
+            touch sent.json highlights.json cards.json live.json daily_videos.json
+            git add sent.json highlights.json cards.json live.json daily_videos.json
             git diff --cached --quiet && return 0
             git commit -q -m "update state"
             for i in 1 2 3 4 5; do
@@ -64,6 +64,9 @@ jobs:
             fi
             if [ $((m % 10)) -eq 0 ]; then
               python scripts/post_results.py || echo "results xato"
+            fi
+            if [ $((m % 10)) -eq 3 ]; then
+              python scripts/daily_videos.py || echo "daily videos xato"
             fi
             python scripts/live_goals.py || echo "live xato"
             save || echo "save xato"
