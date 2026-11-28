@@ -25,8 +25,7 @@ SLOTS = [
         "football memes", "funny football moments", "futbol memlari", "футбольные приколы", "football funny fails"], 30, 10000, 60),
 ]
 BLOCK = ("bet", "1xbet", "casino", "promo code", "promocode", "18+", "nsfw", "sex", "gambling", "stavka", "ставк", "казино", "fifa 2",
-         "efootball", "pes ", "gameplay",
-         "tutorial", "how to", "learn ", "lesson", "training", "drill", "урок", "обучен", "как делать", "o'rgan")
+         "efootball", "pes ", "gameplay")
 MAX_TRIES = 12
 
 def load():
@@ -102,8 +101,7 @@ def footer():
 
 def post(label, vid, title, channel):
     url = f"https://www.youtube.com/watch?v={vid}"
-    # Sarlavha oldindan ko'rishning o'zida bor — matnda takrorlamaymiz; havola ko'rinmas (Telegram kartochkasi uchun)
-    text = (f'<a href="{url}">&#8203;</a><b>{label}</b>\n'
+    text = (f"<b>{label}</b>\n\n▶️ <a href=\"{url}\">{html.escape(title, quote=False)}</a>\n"
             f"📺 {html.escape(channel, quote=False)}\n\n{footer()}")
     r = tg("sendMessage", chat_id=CHANNEL_ID, text=text, parse_mode="HTML",
            link_preview_options={"url": url, "prefer_large_media": True, "show_above_text": True})
